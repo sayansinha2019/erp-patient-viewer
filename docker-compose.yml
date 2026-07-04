@@ -1,0 +1,13 @@
+services:
+  erp-viewer:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PORT=8000
+      - ERP_SAMPLES_DIR=/app/data/samples
+      - ERP_MODE=mock
+      - TRANSLATION_MODE=auto
+    restart: unless-stopped

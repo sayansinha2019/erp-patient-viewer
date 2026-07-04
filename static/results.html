@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prescription Summary — E-Rezept Patient Viewer</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+</head>
+<body>
+  <header>
+    <h1>Plain-language prescription summary</h1>
+    <p id="subtitle">Loading your e-prescription…</p>
+  </header>
+
+  <div class="container">
+    <div class="panel">
+      <div class="top-bar">
+        <a href="/" class="btn-link secondary">← Back to upload</a>
+        <button type="button" class="secondary" id="reloadBtn">Reload translation</button>
+      </div>
+      <div class="status-bar" id="statusBar"></div>
+      <div id="results" class="results">
+        <div class="loading-state">Processing prescription…</div>
+      </div>
+
+      <div class="chat-panel" id="chatPanel" hidden>
+        <h2>Ask about your prescription</h2>
+        <p class="chat-sub">Powered by Gemini · Answers only about <em>this</em> prescription</p>
+        <div class="chat-suggestions" id="chatSuggestions">
+          <button type="button" data-q="What medication was prescribed and what is it for?">What was prescribed?</button>
+          <button type="button" data-q="Do I need to pay a co-payment at the pharmacy?">Co-payment?</button>
+          <button type="button" data-q="How do I redeem this e-prescription at a pharmacy?">How to redeem?</button>
+          <button type="button" data-q="Can the pharmacy give me a generic alternative?">Generic substitute?</button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+          <div class="chat-msg system">Ask anything about your prescription summary above.</div>
+        </div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="e.g. What does my co-payment status mean?" autocomplete="off" />
+          <button type="button" id="chatSendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Demo only — not medical advice. Not for clinical use.</footer>
+
+  <script src="/static/results.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get('type') || 'sample';
+    const lang = params.get('lang') || 'en';
+    const mode = params.get('mode') || 'auto';
+    const resultsEl = document.getElementById('results');
+    const statusBar = document.getElementById('statusBar');
+    const subtitle = document.getElementById('subtitle');
+    const chatPanel = document.getElementById('chatPanel');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const chatSendBtn = document.getElementById('chatSendBtn');
+
+    let prescriptionData = null;
+    let chatHistory = [];
+    let chatBusy = false;
+
+    function appendChatMessage(text, role, refused = false) {
+      const div = document.createElement('div');
+      div.className = 'chat-msg ' + role + (refused ? ' refused' : '');
+      div.textContent = text;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function sendChatMessage(text) {
+      const message = (text || chatInput.value).trim();
+      if (!message || chatBusy || !prescriptionData) return;
+
+      chatInput.value = '';
+      appendChatMessage(message, 'user');
+      chatBusy = true;
+      chatSendBtn.disabled = true;
+      appendChatMessage('Thinking…', 'system');
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message,
+            parsed: prescriptionData.parsed,
+            humanized: prescriptionData.humanized,
+            history: chatHistory,
+            lang,
+          }),
+        });
+        const data = await res.json();
+        chatMessages.removeChild(chatMessages.lastChild);
+        if (!res.ok) throw new Error(data.detail || 'Chat failed');
+
+        chatHistory.push({ role: 'user', content: message });
+        chatHistory.push({ role: 'assistant', content: data.reply });
+        appendChatMessage(data.reply, 'bot', !data.on_topic);
+      } catch (err) {
+        if (chatMessages.lastChild?.classList.contains('system')) {
+          chatMessages.removeChild(chatMessages.lastChild);
+        }
+        appendChatMessage(`Error: ${err.message}`, 'bot', true);
+      } finally {
+        chatBusy = false;
+        chatSendBtn.disabled = false;
+        chatInput.focus();
+      }
+    }
+
+    async function loadData() {
+      resultsEl.innerHTML = '<div class="loading-state">Processing prescription…</div>';
+      statusBar.innerHTML = '';
+      chatPanel.hidden = true;
+      prescriptionData = null;
+      chatHistory = [];
+      chatMessages.innerHTML = '<div class="chat-msg system">Ask anything about your prescription summary above.</div>';
+
+      try {
+        let res;
+        if (type === 'sample') {
+          const id = params.get('sample_id') || params.get('id');
+          if (!id) throw new Error('Missing sample ID');
+          subtitle.textContent = `Sample prescription · ${lang} · ${mode}`;
+          res = await fetch(`/api/process/sample/${encodeURIComponent(id)}?lang=${encodeURIComponent(lang)}&mode=${encodeURIComponent(mode)}`);
+        } else if (type === 'erp') {
+          const taskId = params.get('task_id');
+          if (!taskId) throw new Error('Missing task ID');
+          subtitle.textContent = `E-Rezept Task ${taskId} · ${lang}`;
+          const token = sessionStorage.getItem('erp_token') || '';
+          const headers = token ? { Authorization: `Bearer ${token}` } : {};
+          res = await fetch(
+            `/api/erp/fetch/${encodeURIComponent(taskId)}?lang=${encodeURIComponent(lang)}&mode=${encodeURIComponent(mode)}`,
+            { headers }
+          );
+        } else if (type === 'raw') {
+          const raw = sessionStorage.getItem('erp_raw_payload');
+          if (!raw) throw new Error('No pasted data found. Go back and paste FHIR again.');
+          subtitle.textContent = `Uploaded FHIR data · ${lang}`;
+          res = await fetch('/api/process/raw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: raw,
+          });
+        } else {
+          throw new Error('Unknown result type');
+        }
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+        prescriptionData = data;
+        const med = data.parsed?.medication_name || data.parsed?.prescription_id || 'E-Rezept';
+        subtitle.textContent = `${med} · ${lang}${data.humanized?.translated ? ' (translated)' : ''}`;
+
+        renderPrescriptionResults(resultsEl, data, statusBar);
+        chatPanel.hidden = false;
+      } catch (err) {
+        resultsEl.innerHTML = `<div class="empty">Error: ${err.message}</div>`;
+        subtitle.textContent = 'Could not load prescription';
+      }
+    }
+
+    document.getElementById('reloadBtn').addEventListener('click', loadData);
+    chatSendBtn.addEventListener('click', () => sendChatMessage());
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendChatMessage();
+    });
+    document.getElementById('chatSuggestions').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-q]');
+      if (btn) sendChatMessage(btn.dataset.q);
+    });
+
+    loadData();
+  </script>
+</body>
+</html>
