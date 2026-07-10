@@ -4,19 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify — Health timeline</title>
-  <link rel="stylesheet" href="/static/shared.css" />
+  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
 </head>
-<body>
+<body class="has-app-bar">
   <header class="app-bar">
-    <button type="button" class="back-btn" onclick="location.href='/account'">←</button>
-    <span>My health</span>
-    <span style="width:48px;"></span>
+    <div class="app-bar-inner">
+      <button type="button" class="back-btn" onclick="location.href='/account'" aria-label="Back">←</button>
+      <span class="app-bar-title">My health</span>
+      <span class="app-bar-spacer" aria-hidden="true"></span>
+    </div>
   </header>
-  <main class="screen">
-    <h1 class="screen-title">Health timeline</h1>
-    <div id="timeline"></div>
-    <h2 style="font-size:1.125rem;margin-top:2rem;">Trends</h2>
-    <div id="trends"></div>
+  <main class="screen screen-wide">
+    <div class="page-header">
+      <h1 class="screen-title">Health timeline</h1>
+    </div>
+    <div class="timeline-layout">
+      <section>
+        <div id="timeline"></div>
+      </section>
+      <section>
+        <h2 class="section-heading">Trends</h2>
+        <div id="trends"></div>
+      </section>
+    </div>
   </main>
   <script>
     const auth = JSON.parse(sessionStorage.getItem('klarify_auth') || 'null');

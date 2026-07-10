@@ -4,22 +4,32 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify — Account</title>
-  <link rel="stylesheet" href="/static/shared.css" />
+  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
 </head>
-<body>
+<body class="has-app-bar">
   <header class="app-bar">
-    <button type="button" class="back-btn" onclick="location.href='/home'">←</button>
-    <span>Account</span>
-    <span style="width:48px;"></span>
+    <div class="app-bar-inner">
+      <button type="button" class="back-btn" onclick="location.href='/home'" aria-label="Back">←</button>
+      <span class="app-bar-title">Account</span>
+      <span class="app-bar-spacer" aria-hidden="true"></span>
+    </div>
   </header>
-  <main class="screen">
-    <h1 class="screen-title">Save your health history</h1>
-    <p class="lead">Optional encrypted storage — AES-256, client-side key derivation.</p>
-    <label>Email<br><input type="email" id="email" style="width:100%;min-height:48px;margin:0.5rem 0 1rem;" /></label>
-    <label>Password<br><input type="password" id="password" style="width:100%;min-height:48px;margin:0.5rem 0 1rem;" /></label>
-    <button type="button" class="btn-primary" id="registerBtn">Create account</button>
-    <button type="button" class="btn-secondary" id="loginBtn">Log in</button>
-    <button type="button" class="btn-ghost" id="timelineBtn" style="width:100%;margin-top:1rem;">View health timeline →</button>
+  <main class="screen screen-narrow screen-panel">
+    <div class="page-header">
+      <h1 class="screen-title">Save your health history</h1>
+      <p class="lead" style="margin-bottom:var(--space-6);">Optional encrypted storage — AES-256, client-side key derivation.</p>
+    </div>
+    <label class="form-field">Email
+      <input type="email" id="email" autocomplete="email" />
+    </label>
+    <label class="form-field">Password
+      <input type="password" id="password" autocomplete="current-password" />
+    </label>
+    <div class="btn-row">
+      <button type="button" class="btn-primary" id="registerBtn">Create account</button>
+      <button type="button" class="btn-secondary" id="loginBtn">Log in</button>
+    </div>
+    <button type="button" class="btn-ghost block" id="timelineBtn" style="margin-top:1rem;">View health timeline →</button>
     <p id="msg" class="subtitle-muted"></p>
   </main>
   <script>

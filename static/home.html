@@ -4,34 +4,50 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify</title>
-  <link rel="stylesheet" href="/static/shared.css" />
+  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
 </head>
-<body>
+<body class="has-app-bar">
   <header class="app-bar">
-    <span class="wordmark" style="font-size:1.25rem;margin:0;">Klarify</span>
-    <button type="button" class="back-btn" id="settingsBtn" aria-label="Settings">⚙</button>
+    <div class="app-bar-inner">
+      <span class="app-bar-spacer" aria-hidden="true"></span>
+      <a href="/home" class="wordmark-link">Klarify</a>
+      <button type="button" class="back-btn" id="settingsBtn" aria-label="Settings">⚙</button>
+    </div>
   </header>
 
-  <main class="screen">
-    <h2 class="display" id="greeting" style="font-size:1.75rem;margin-bottom:0.5rem;">Hello.</h2>
-    <p class="lead" id="homeQuestion" style="margin-bottom:2rem;">Which document would you like to understand today?</p>
+  <main class="screen screen-wide">
+    <div class="screen-panel">
+      <div class="home-hero page-header">
+        <h2 class="display" id="greeting">Hello.</h2>
+        <p class="lead" id="homeQuestion">Which document would you like to understand today?</p>
+      </div>
 
-    <a href="/upload" class="btn-primary" id="uploadBtn">Upload document</a>
+      <div class="home-cards">
+        <a href="/upload" class="home-card home-card--primary" id="uploadBtn">
+          <span class="home-card__icon" aria-hidden="true">📄</span>
+          <span class="home-card__title" id="uploadTitle">Upload document</span>
+          <span class="home-card__desc">PDF, FHIR, or scanned letter</span>
+        </a>
+        <a href="/epa" class="home-card home-card--secondary" id="epaBtn">
+          <span class="home-card__icon" aria-hidden="true">🏥</span>
+          <span class="home-card__title" id="epaLabel">Connect ePA</span>
+          <span class="home-card__desc">Import from your electronic health record</span>
+        </a>
+      </div>
 
-    <a href="/epa" class="btn-secondary" id="epaBtn">
-      <span id="epaLabel">Connect ePA</span>
-    </a>
+      <div class="trust-strip" id="trustStrip">
+        <span aria-hidden="true">🔒</span>
+        <span id="trustText">Your data is deleted immediately. Nothing is stored.</span>
+      </div>
 
-    <div class="trust-strip" id="trustStrip">
-      <span aria-hidden="true">🔒</span>
-      <span id="trustText">Your data is deleted immediately. Nothing is stored.</span>
+      <div class="secondary-actions">
+        <button type="button" class="link-pill" id="accountCta">Create account → Save your history</button>
+        <button type="button" class="link-pill" id="sampleBtn">Try a sample prescription</button>
+      </div>
     </div>
-
-    <button type="button" class="btn-ghost" id="accountCta" style="width:100%;">Create account → Save your history</button>
-    <button type="button" class="btn-ghost" id="sampleBtn" style="width:100%;margin-top:0.5rem;">Try a sample prescription</button>
   </main>
 
-  <script src="/static/i18n.js"></script>
+  <script src="/static/i18n.js?v=20260710"></script>
   <script>
     if (!sessionStorage.getItem('klarify_lang')) {
       window.location.href = '/';
@@ -39,7 +55,7 @@
     applyRtl();
     document.getElementById('greeting').textContent = greeting();
     document.getElementById('homeQuestion').textContent = t('homeQuestion');
-    document.getElementById('uploadBtn').textContent = t('uploadDoc');
+    document.getElementById('uploadTitle').textContent = t('uploadDoc');
     document.getElementById('epaLabel').textContent = t('connectEpa');
     document.getElementById('trustText').textContent = t('trustStrip');
     document.getElementById('accountCta').textContent = t('createAccount');

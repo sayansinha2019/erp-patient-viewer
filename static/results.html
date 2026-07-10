@@ -4,10 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify</title>
-  <link rel="stylesheet" href="/static/shared.css" />
+  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
 </head>
 <body>
-  <div id="processingView" class="processing-wrap" hidden>
+  <div id="processingView" class="processing-wrap screen screen-narrow" hidden>
     <div class="processing-icon" aria-hidden="true">📄→📝</div>
     <p id="processingText" style="font-size:1.125rem;color:var(--color-slate);">Reading your document…</p>
     <p id="processingTime" style="color:var(--color-muted);">This usually takes about 10 seconds.</p>
@@ -17,37 +17,47 @@
 
   <div id="resultsView" hidden>
     <header class="app-bar">
-      <button type="button" class="back-btn" onclick="location.href='/home'" aria-label="Back">←</button>
-      <span id="resultsBarTitle">Klarify</span>
-      <span style="width:48px;"></span>
+      <div class="app-bar-inner">
+        <button type="button" class="back-btn" onclick="location.href='/home'" aria-label="Back">←</button>
+        <span class="app-bar-title" id="resultsBarTitle">Klarify</span>
+        <span class="app-bar-spacer" aria-hidden="true"></span>
+      </div>
     </header>
 
-    <main class="screen">
-      <h1 class="screen-title" id="docTitle">Your prescription explained</h1>
-      <p class="subtitle-muted" id="docSubtitle"></p>
-
-      <div id="results" class="results"></div>
-
-      <div class="feedback-row" id="feedbackRow">
-        <span id="helpfulText">Was this helpful?</span>
-        <button type="button" aria-label="Yes">👍</button>
-        <button type="button" aria-label="No">👎</button>
+    <main class="screen screen-wide">
+      <div class="page-header">
+        <h1 class="screen-title" id="docTitle">Your prescription explained</h1>
+        <p class="subtitle-muted" id="docSubtitle"></p>
       </div>
-      <button type="button" class="btn-ghost" id="saveBtn" style="width:100%;margin-bottom:1rem;">Save explanation</button>
 
-      <div class="chat-panel" id="chatPanel" hidden>
-        <h2 id="chatTitle">Ask about your prescription</h2>
-        <p class="chat-sub" id="chatSub">Ask about this document or general steps (pharmacy, appointments, terms)</p>
-        <div class="chat-suggestions" id="chatSuggestions">
-          <button type="button" data-q="What medication was prescribed?">Medication?</button>
-          <button type="button" data-q="Do I need to pay a co-payment?">Co-payment?</button>
-          <button type="button" data-q="How do I use this at the pharmacy?">Pharmacy?</button>
-        </div>
-        <div class="chat-messages" id="chatMessages"></div>
-        <div class="chat-input-row">
-          <input type="text" id="chatInput" autocomplete="off" />
-          <button type="button" id="chatSendBtn">Send</button>
-        </div>
+      <div class="results-layout">
+        <section class="results-column">
+          <div id="results" class="results"></div>
+
+          <div class="feedback-row" id="feedbackRow">
+            <span id="helpfulText">Was this helpful?</span>
+            <button type="button" aria-label="Yes">👍</button>
+            <button type="button" aria-label="No">👎</button>
+          </div>
+          <button type="button" class="btn-ghost block" id="saveBtn" style="margin-bottom:1rem;">Save explanation</button>
+        </section>
+
+        <aside class="results-aside">
+          <div class="chat-panel" id="chatPanel" hidden>
+            <h2 id="chatTitle">Ask about your prescription</h2>
+            <p class="chat-sub" id="chatSub">Ask about this document or general steps (pharmacy, appointments, terms)</p>
+            <div class="chat-suggestions" id="chatSuggestions">
+              <button type="button" data-q="What medication was prescribed?">Medication?</button>
+              <button type="button" data-q="Do I need to pay a co-payment?">Co-payment?</button>
+              <button type="button" data-q="How do I use this at the pharmacy?">Pharmacy?</button>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-row">
+              <input type="text" id="chatInput" autocomplete="off" />
+              <button type="button" id="chatSendBtn">Send</button>
+            </div>
+          </div>
+        </aside>
       </div>
     </main>
 
