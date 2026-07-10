@@ -74,7 +74,11 @@ def register_user(email: str, password: str) -> dict[str, str]:
         (user_id, email.lower(), pw_hash, salt, now),
       )
     log_consent(user_id, "account_created", "1.0", {"email": email})
-    return {"user_id": user_id, "email": email}
+    token = uuid.uuid4().hex
+    expires = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    with _conn() as c:
+      c.execute("INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?,?)", (token, user_id, expires))
+    return {"token": token, "user_id": user_id, "email": email}
 
 
 def login_user(email: str, password: str) -> dict[str, str]:

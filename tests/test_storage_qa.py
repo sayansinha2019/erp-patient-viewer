@@ -13,6 +13,8 @@ APP_DIR = Path(__file__).resolve().parent.parent
 def test_register_and_timeline(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "DB_PATH", tmp_path / "test.db")
     user = storage.register_user("helga@example.com", "secure-pass-123")
+    assert user["token"]
+    assert user["user_id"]
     record = {
         "document_type": "lab_result",
         "document_title": "Lab test",
