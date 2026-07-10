@@ -1,0 +1,9 @@
+{
+  "id": "discharge_diabetes",
+  "sample": "data/samples/documents/discharge_diabetes.json",
+  "lang": "de",
+  "expect": {
+    "flag_codes": ["follow_up_due"],
+    "forbidden_phrases": ["emergency", "fatal"]
+  }
+}

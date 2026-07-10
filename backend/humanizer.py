@@ -155,3 +155,65 @@ def humanize(parsed: dict[str, Any]) -> dict[str, Any]:
         "pipeline_status": pipeline_status,
         "source_language": "en",
     }
+
+
+def build_explanation_cards(parsed: dict[str, Any], humanized: dict[str, Any]) -> list[dict[str, Any]]:
+    """Klarify explanation cards: clinical label + original text + plain-language body."""
+    cards: list[dict[str, Any]] = []
+    sections = humanized.get("sections") or {}
+
+    med_clinical = " · ".join(
+        p
+        for p in [
+            parsed.get("medication_name"),
+            parsed.get("dosage_form"),
+            parsed.get("quantity"),
+        ]
+        if p
+    )
+    med_items = sections.get("medication", {}).get("items") or {}
+    med_body = humanized.get("patient_summary") or ". ".join(med_items.values()) if med_items else None
+    if med_clinical or med_body:
+        cards.append(
+            {
+                "label": "MEDICATION",
+                "clinical_text": med_clinical or parsed.get("medication_name") or "—",
+                "explanation": med_body or "Your prescribed medicine is listed above.",
+                "section_key": "medication",
+            }
+        )
+
+    summary_items = sections.get("summary", {}).get("items") or {}
+    if summary_items:
+        cards.append(
+            {
+                "label": "PRESCRIPTION",
+                "clinical_text": parsed.get("prescription_id") or parsed.get("document_title") or "E-Rezept",
+                "explanation": ". ".join(f"{k}: {v}" for k, v in summary_items.items()),
+                "section_key": "summary",
+            }
+        )
+
+    patient_items = sections.get("patient", {}).get("items") or {}
+    if patient_items:
+        cards.append(
+            {
+                "label": "PATIENT & INSURANCE",
+                "clinical_text": parsed.get("patient_name") or "Patient details",
+                "explanation": ". ".join(f"{k}: {v}" for k, v in patient_items.items()),
+                "section_key": "patient",
+            }
+        )
+
+    prescriber_items = sections.get("prescriber", {}).get("items") or {}
+    if prescriber_items:
+        cards.append(
+            {
+                "label": "PRESCRIBER",
+                "clinical_text": parsed.get("prescriber_name") or "Prescribing doctor",
+                "explanation": ". ".join(f"{k}: {v}" for k, v in prescriber_items.items()),
+                "section_key": "prescriber",
+            }
+        )
+
+    return cards

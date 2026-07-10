@@ -37,6 +37,28 @@ def test_humanize_produces_sections(sample_xml_path):
     assert result["sections"]["medication"]["items"]
 
 
+def test_explanation_cards(sample_xml_path):
+    from backend.humanizer import build_explanation_cards
+
+    parsed = load_sample(sample_xml_path)
+    humanized = humanize(parsed)
+    cards = build_explanation_cards(parsed, humanized)
+    assert len(cards) >= 1
+    assert any(c["section_key"] == "medication" for c in cards)
+
+
+def test_pipeline_integration(sample_xml_path):
+    from backend.pipeline import process_document
+
+    content = sample_xml_path.read_text(encoding="utf-8")
+    out = process_document(content, filename=sample_xml_path.name, lang="en", mode="offline")
+    assert out["document_type"] == "prescription"
+    assert out["pipeline"]["l1_translation"]["status"] == "ok"
+    assert "flags" in out
+    assert "explanation_cards" in out
+    assert out["zero_retention"] is True
+
+
 def test_full_pipeline_english(sample_xml_path):
     parsed = load_sample(sample_xml_path)
     humanized = humanize(parsed)

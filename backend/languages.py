@@ -1,5 +1,15 @@
 """Supported languages and offline UI label translations."""
 
+# CEO-specified Phase 1 languages (flag grid on language screen)
+KLARIFY_LANGUAGES = {
+    "de": {"name": "Deutsch", "flag": "🇩🇪", "rtl": False},
+    "en": {"name": "English", "flag": "🇬🇧", "rtl": False},
+    "tr": {"name": "Türkçe", "flag": "🇹🇷", "rtl": False},
+    "ar": {"name": "العربية", "flag": "🇸🇦", "rtl": True},
+    "ru": {"name": "Русский", "flag": "🇷🇺", "rtl": False},
+    "fr": {"name": "Français", "flag": "🇫🇷", "rtl": False},
+}
+
 SUPPORTED_LANGUAGES = {
     "en": "English",
     "de": "German",

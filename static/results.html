@@ -1,59 +1,83 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prescription Summary — E-Rezept Patient Viewer</title>
+  <title>Klarify</title>
   <link rel="stylesheet" href="/static/shared.css" />
 </head>
 <body>
-  <header>
-    <h1>Plain-language prescription summary</h1>
-    <p id="subtitle">Loading your e-prescription…</p>
-  </header>
+  <div id="processingView" class="processing-wrap" hidden>
+    <div class="processing-icon" aria-hidden="true">📄→📝</div>
+    <p id="processingText" style="font-size:1.125rem;color:var(--color-slate);">Reading your document…</p>
+    <p id="processingTime" style="color:var(--color-muted);">This usually takes about 10 seconds.</p>
+    <div class="progress-dots" aria-hidden="true">●●●○○○</div>
+    <p id="notStored" style="font-size:0.875rem;color:var(--color-muted);">Your data is not stored.</p>
+  </div>
 
-  <div class="container">
-    <div class="panel">
-      <div class="top-bar">
-        <a href="/" class="btn-link secondary">← Back to upload</a>
-        <button type="button" class="secondary" id="reloadBtn">Reload translation</button>
+  <div id="resultsView" hidden>
+    <header class="app-bar">
+      <button type="button" class="back-btn" onclick="location.href='/home'" aria-label="Back">←</button>
+      <span id="resultsBarTitle">Klarify</span>
+      <span style="width:48px;"></span>
+    </header>
+
+    <main class="screen">
+      <h1 class="screen-title" id="docTitle">Your prescription explained</h1>
+      <p class="subtitle-muted" id="docSubtitle"></p>
+
+      <div id="results" class="results"></div>
+
+      <div class="feedback-row" id="feedbackRow">
+        <span id="helpfulText">Was this helpful?</span>
+        <button type="button" aria-label="Yes">👍</button>
+        <button type="button" aria-label="No">👎</button>
       </div>
-      <div class="status-bar" id="statusBar"></div>
-      <div id="results" class="results">
-        <div class="loading-state">Processing prescription…</div>
-      </div>
+      <button type="button" class="btn-ghost" id="saveBtn" style="width:100%;margin-bottom:1rem;">Save explanation</button>
 
       <div class="chat-panel" id="chatPanel" hidden>
-        <h2>Ask about your prescription</h2>
-        <p class="chat-sub">Powered by Gemini · Answers only about <em>this</em> prescription</p>
+        <h2 id="chatTitle">Ask about your prescription</h2>
+        <p class="chat-sub" id="chatSub">Ask about this document or general steps (pharmacy, appointments, terms)</p>
         <div class="chat-suggestions" id="chatSuggestions">
-          <button type="button" data-q="What medication was prescribed and what is it for?">What was prescribed?</button>
-          <button type="button" data-q="Do I need to pay a co-payment at the pharmacy?">Co-payment?</button>
-          <button type="button" data-q="How do I redeem this e-prescription at a pharmacy?">How to redeem?</button>
-          <button type="button" data-q="Can the pharmacy give me a generic alternative?">Generic substitute?</button>
+          <button type="button" data-q="What medication was prescribed?">Medication?</button>
+          <button type="button" data-q="Do I need to pay a co-payment?">Co-payment?</button>
+          <button type="button" data-q="How do I use this at the pharmacy?">Pharmacy?</button>
         </div>
-        <div class="chat-messages" id="chatMessages">
-          <div class="chat-msg system">Ask anything about your prescription summary above.</div>
-        </div>
+        <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input-row">
-          <input type="text" id="chatInput" placeholder="e.g. What does my co-payment status mean?" autocomplete="off" />
+          <input type="text" id="chatInput" autocomplete="off" />
           <button type="button" id="chatSendBtn">Send</button>
         </div>
       </div>
-    </div>
+    </main>
+
+    <p class="disclaimer" id="disclaimer">Informational only — not medical advice.</p>
   </div>
 
-  <footer>Demo only — not medical advice. Not for clinical use.</footer>
-
+  <script src="/static/i18n.js"></script>
   <script src="/static/results.js"></script>
   <script>
+    if (!sessionStorage.getItem('klarify_lang')) location.href = '/';
+    applyRtl();
+
     const params = new URLSearchParams(window.location.search);
     const type = params.get('type') || 'sample';
-    const lang = params.get('lang') || 'en';
+    const lang = params.get('lang') || klarifyLang();
     const mode = params.get('mode') || 'auto';
+
+    document.getElementById('processingText').textContent = t('processing');
+    document.getElementById('processingTime').textContent = t('processingTime');
+    document.getElementById('notStored').textContent = t('notStored');
+    document.getElementById('docTitle').textContent = t('prescriptionExplained');
+    document.getElementById('helpfulText').textContent = t('helpful');
+    document.getElementById('chatTitle').textContent = t('chatTitle');
+    document.getElementById('chatInput').placeholder = t('chatPlaceholder');
+    document.getElementById('chatSendBtn').textContent = t('send');
+    document.getElementById('disclaimer').textContent = t('disclaimer');
+
+    const processingView = document.getElementById('processingView');
+    const resultsView = document.getElementById('resultsView');
     const resultsEl = document.getElementById('results');
-    const statusBar = document.getElementById('statusBar');
-    const subtitle = document.getElementById('subtitle');
     const chatPanel = document.getElementById('chatPanel');
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
@@ -62,6 +86,13 @@
     let prescriptionData = null;
     let chatHistory = [];
     let chatBusy = false;
+
+    processingView.hidden = false;
+
+    function showResults() {
+      processingView.hidden = true;
+      resultsView.hidden = false;
+    }
 
     function appendChatMessage(text, role, refused = false) {
       const div = document.createElement('div');
@@ -74,13 +105,11 @@
     async function sendChatMessage(text) {
       const message = (text || chatInput.value).trim();
       if (!message || chatBusy || !prescriptionData) return;
-
       chatInput.value = '';
       appendChatMessage(message, 'user');
       chatBusy = true;
       chatSendBtn.disabled = true;
-      appendChatMessage('Thinking…', 'system');
-
+      appendChatMessage('…', 'system');
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -96,7 +125,6 @@
         const data = await res.json();
         chatMessages.removeChild(chatMessages.lastChild);
         if (!res.ok) throw new Error(data.detail || 'Chat failed');
-
         chatHistory.push({ role: 'user', content: message });
         chatHistory.push({ role: 'assistant', content: data.reply });
         appendChatMessage(data.reply, 'bot', !data.on_topic);
@@ -104,78 +132,102 @@
         if (chatMessages.lastChild?.classList.contains('system')) {
           chatMessages.removeChild(chatMessages.lastChild);
         }
-        appendChatMessage(`Error: ${err.message}`, 'bot', true);
+        appendChatMessage(err.message, 'bot', true);
       } finally {
         chatBusy = false;
         chatSendBtn.disabled = false;
-        chatInput.focus();
       }
     }
 
     async function loadData() {
-      resultsEl.innerHTML = '<div class="loading-state">Processing prescription…</div>';
-      statusBar.innerHTML = '';
-      chatPanel.hidden = true;
-      prescriptionData = null;
-      chatHistory = [];
-      chatMessages.innerHTML = '<div class="chat-msg system">Ask anything about your prescription summary above.</div>';
-
       try {
         let res;
-        if (type === 'sample') {
+        let data;
+        if (type === 'cached') {
+          const cached = sessionStorage.getItem('klarify_result');
+          if (!cached) throw new Error('No result found. Please upload again.');
+          data = JSON.parse(cached);
+          sessionStorage.removeItem('klarify_result');
+        } else if (type === 'sample') {
           const id = params.get('sample_id') || params.get('id');
           if (!id) throw new Error('Missing sample ID');
-          subtitle.textContent = `Sample prescription · ${lang} · ${mode}`;
           res = await fetch(`/api/process/sample/${encodeURIComponent(id)}?lang=${encodeURIComponent(lang)}&mode=${encodeURIComponent(mode)}`);
+          data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Request failed');
         } else if (type === 'erp') {
           const taskId = params.get('task_id');
-          if (!taskId) throw new Error('Missing task ID');
-          subtitle.textContent = `E-Rezept Task ${taskId} · ${lang}`;
           const token = sessionStorage.getItem('erp_token') || '';
           const headers = token ? { Authorization: `Bearer ${token}` } : {};
+          res = await fetch(`/api/erp/fetch/${encodeURIComponent(taskId)}?lang=${encodeURIComponent(lang)}&mode=${encodeURIComponent(mode)}`, { headers });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Request failed');
+        } else if (type === 'epa') {
+          const docId = params.get('doc_id');
+          const token = sessionStorage.getItem('epa_token') || 'sandbox-demo-token';
           res = await fetch(
-            `/api/erp/fetch/${encodeURIComponent(taskId)}?lang=${encodeURIComponent(lang)}&mode=${encodeURIComponent(mode)}`,
-            { headers }
+            `/api/epa/documents/${encodeURIComponent(docId)}/process?lang=${encodeURIComponent(lang)}&mode=${encodeURIComponent(mode)}`,
+            { headers: { Authorization: `Bearer ${token}` } }
           );
-        } else if (type === 'raw') {
-          const raw = sessionStorage.getItem('erp_raw_payload');
-          if (!raw) throw new Error('No pasted data found. Go back and paste FHIR again.');
-          subtitle.textContent = `Uploaded FHIR data · ${lang}`;
+          data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Request failed');
+        } else if (type === 'upload' || type === 'raw') {
+          const raw = sessionStorage.getItem('klarify_upload') || sessionStorage.getItem('erp_raw_payload');
+          if (!raw) throw new Error('No document found. Please upload again.');
           res = await fetch('/api/process/raw', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: raw,
           });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Request failed');
         } else {
-          throw new Error('Unknown result type');
+          throw new Error('Unknown type');
         }
 
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Request failed');
+        if (!data) {
+          data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Request failed');
+        }
 
         prescriptionData = data;
-        const med = data.parsed?.medication_name || data.parsed?.prescription_id || 'E-Rezept';
-        subtitle.textContent = `${med} · ${lang}${data.humanized?.translated ? ' (translated)' : ''}`;
+        const med = data.parsed?.medication_name || '';
+        if (med) {
+          document.getElementById('docSubtitle').textContent = med;
+        }
 
-        renderPrescriptionResults(resultsEl, data, statusBar);
+        renderKlarifyResults(resultsEl, data);
         chatPanel.hidden = false;
+        showResults();
       } catch (err) {
-        resultsEl.innerHTML = `<div class="empty">Error: ${err.message}</div>`;
-        subtitle.textContent = 'Could not load prescription';
+        showResults();
+        resultsEl.innerHTML = `<div class="empty">${err.message}</div>`;
       }
     }
 
-    document.getElementById('reloadBtn').addEventListener('click', loadData);
-    chatSendBtn.addEventListener('click', () => sendChatMessage());
-    chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') sendChatMessage();
+    document.getElementById('feedbackRow').addEventListener('click', (e) => {
+      if (e.target.closest('button')) {
+        document.getElementById('feedbackRow').hidden = true;
+      }
     });
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const auth = JSON.parse(sessionStorage.getItem('klarify_auth') || 'null');
+      if (!auth?.token) { window.location.href = '/account'; return; }
+      const res = await fetch('/api/storage/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify({ password: auth.password, record: prescriptionData }),
+      });
+      if (res.ok) alert('Saved to your health timeline.');
+      else alert('Could not save — check you are logged in.');
+    });
+    chatSendBtn.addEventListener('click', () => sendChatMessage());
+    chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChatMessage(); });
     document.getElementById('chatSuggestions').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-q]');
       if (btn) sendChatMessage(btn.dataset.q);
     });
 
-    loadData();
+    setTimeout(loadData, 800);
   </script>
 </body>
 </html>

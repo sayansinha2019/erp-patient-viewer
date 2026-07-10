@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Klarify</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+</head>
+<body>
+  <main class="screen screen-centre">
+    <h1 class="wordmark">Klarify</h1>
+    <p class="lead" id="langPrompt">In which language would you like to continue?</p>
+
+    <div class="lang-grid" id="langGrid"></div>
+    <button type="button" class="btn-ghost" id="otherLang">Other language →</button>
+  </main>
+
+  <script src="/static/i18n.js"></script>
+  <script>
+    const PRIMARY = [
+      { code: 'de', flag: '🇩🇪', name: 'Deutsch' },
+      { code: 'en', flag: '🇬🇧', name: 'English' },
+      { code: 'tr', flag: '🇹🇷', name: 'Türkçe' },
+      { code: 'ar', flag: '🇸🇦', name: 'العربية' },
+      { code: 'ru', flag: '🇷🇺', name: 'Русский' },
+      { code: 'fr', flag: '🇫🇷', name: 'Français' },
+    ];
+
+    function selectLang(code) {
+      sessionStorage.setItem('klarify_lang', code);
+      window.location.href = '/home';
+    }
+
+    const grid = document.getElementById('langGrid');
+    for (const lang of PRIMARY) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'lang-btn';
+      btn.innerHTML = `<span class="flag">${lang.flag}</span><span class="name">${lang.name}</span>`;
+      btn.addEventListener('click', () => selectLang(lang.code));
+      grid.appendChild(btn);
+    }
+
+    document.getElementById('otherLang').addEventListener('click', () => {
+      const code = prompt('Enter language code (e.g. en, hi, pl):', 'en');
+      if (code) selectLang(code.trim().toLowerCase());
+    });
+
+    if (sessionStorage.getItem('klarify_lang')) {
+      document.getElementById('langPrompt').textContent = t('langPrompt');
+    }
+  </script>
+</body>
+</html>

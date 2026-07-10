@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Klarify — Account</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <button type="button" class="back-btn" onclick="location.href='/home'">←</button>
+    <span>Account</span>
+    <span style="width:48px;"></span>
+  </header>
+  <main class="screen">
+    <h1 class="screen-title">Save your health history</h1>
+    <p class="lead">Optional encrypted storage — AES-256, client-side key derivation.</p>
+    <label>Email<br><input type="email" id="email" style="width:100%;min-height:48px;margin:0.5rem 0 1rem;" /></label>
+    <label>Password<br><input type="password" id="password" style="width:100%;min-height:48px;margin:0.5rem 0 1rem;" /></label>
+    <button type="button" class="btn-primary" id="registerBtn">Create account</button>
+    <button type="button" class="btn-secondary" id="loginBtn">Log in</button>
+    <button type="button" class="btn-ghost" id="timelineBtn" style="width:100%;margin-top:1rem;">View health timeline →</button>
+    <p id="msg" class="subtitle-muted"></p>
+  </main>
+  <script>
+    document.getElementById('registerBtn').onclick = async () => {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.value, password: password.value }),
+      });
+      const data = await res.json();
+      document.getElementById('msg').textContent = res.ok ? 'Account created.' : (data.detail || 'Error');
+      if (res.ok) sessionStorage.setItem('klarify_auth', JSON.stringify(data));
+    };
+    document.getElementById('loginBtn').onclick = async () => {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.value, password: password.value }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        sessionStorage.setItem('klarify_auth', JSON.stringify({ ...data, password: password.value }));
+        document.getElementById('msg').textContent = 'Logged in.';
+      } else document.getElementById('msg').textContent = data.detail || 'Login failed';
+    };
+    document.getElementById('timelineBtn').onclick = () => location.href = '/timeline';
+    const email = document.getElementById('email');
+    const password = document.getElementById('password');
+  </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "resourceType": "Bundle",
+  "type": "document",
+  "id": "lab-sample-001",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "dr1",
+        "code": {"text": "Laborbefund Diabetes-Kontrolle"},
+        "effectiveDateTime": "2026-07-05",
+        "status": "final"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "id": "obs1",
+        "code": {"coding": [{"code": "4548-4", "display": "HbA1c"}], "text": "HbA1c"},
+        "valueQuantity": {"value": 7.2, "unit": "%"},
+        "interpretation": [{"coding": [{"code": "H"}]}]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "id": "obs2",
+        "code": {"coding": [{"code": "33914-3", "display": "eGFR"}], "text": "eGFR"},
+        "valueQuantity": {"value": 52, "unit": "mL/min/1.73m2"}
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "p1",
+        "name": [{"family": "Müller", "given": ["Helga"]}]
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "E11.9": {"de": "Diabetes mellitus Typ 2 ohne Komplikationen", "en": "Type 2 diabetes without complications", "category": "endocrine"},
+  "E11.65": {"de": "Diabetes mellitus Typ 2 mit Hyperglykämie", "en": "Type 2 diabetes with hyperglycemia", "category": "endocrine"},
+  "I10": {"de": "Essentielle Hypertonie", "en": "Essential hypertension", "category": "cardiovascular"},
+  "N18.3": {"de": "Chronische Nierenerkrankung Stadium 3", "en": "Chronic kidney disease stage 3", "category": "renal"},
+  "J45.9": {"de": "Asthma bronchiale", "en": "Asthma", "category": "respiratory"},
+  "E78.5": {"de": "Hyperlipidämie", "en": "Hyperlipidemia", "category": "metabolic"},
+  "F32.9": {"de": "Depressive Episode", "en": "Depressive episode", "category": "mental"},
+  "M54.5": {"de": "Kreuzschmerz", "en": "Low back pain", "category": "musculoskeletal"},
+  "K21.9": {"de": "Gastroösophageale Refluxkrankheit", "en": "Gastroesophageal reflux disease", "category": "digestive"},
+  "Z96.1": {"de": "Vorhandensein eines intraokularen Linsenimplantats", "en": "Presence of intraocular lens implant", "category": "status"}
+}

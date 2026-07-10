@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Klarify</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <span class="wordmark" style="font-size:1.25rem;margin:0;">Klarify</span>
+    <button type="button" class="back-btn" id="settingsBtn" aria-label="Settings">⚙</button>
+  </header>
+
+  <main class="screen">
+    <h2 class="display" id="greeting" style="font-size:1.75rem;margin-bottom:0.5rem;">Hello.</h2>
+    <p class="lead" id="homeQuestion" style="margin-bottom:2rem;">Which document would you like to understand today?</p>
+
+    <a href="/upload" class="btn-primary" id="uploadBtn">Upload document</a>
+
+    <a href="/epa" class="btn-secondary" id="epaBtn">
+      <span id="epaLabel">Connect ePA</span>
+    </a>
+
+    <div class="trust-strip" id="trustStrip">
+      <span aria-hidden="true">🔒</span>
+      <span id="trustText">Your data is deleted immediately. Nothing is stored.</span>
+    </div>
+
+    <button type="button" class="btn-ghost" id="accountCta" style="width:100%;">Create account → Save your history</button>
+    <button type="button" class="btn-ghost" id="sampleBtn" style="width:100%;margin-top:0.5rem;">Try a sample prescription</button>
+  </main>
+
+  <script src="/static/i18n.js"></script>
+  <script>
+    if (!sessionStorage.getItem('klarify_lang')) {
+      window.location.href = '/';
+    }
+    applyRtl();
+    document.getElementById('greeting').textContent = greeting();
+    document.getElementById('homeQuestion').textContent = t('homeQuestion');
+    document.getElementById('uploadBtn').textContent = t('uploadDoc');
+    document.getElementById('epaLabel').textContent = t('connectEpa');
+    document.getElementById('trustText').textContent = t('trustStrip');
+    document.getElementById('accountCta').textContent = t('createAccount');
+    document.getElementById('sampleBtn').textContent = t('trySample');
+    document.getElementById('settingsBtn').addEventListener('click', () => { window.location.href = '/'; });
+    document.getElementById('accountCta').addEventListener('click', () => { window.location.href = '/account'; });
+    document.getElementById('sampleBtn').addEventListener('click', async () => {
+      const res = await fetch('/api/samples');
+      const data = await res.json();
+      const first = data.samples[0];
+      if (!first) return alert('No samples available');
+      const lang = klarifyLang();
+      window.location.href = `/results?type=sample&sample_id=${encodeURIComponent(first.id)}&lang=${encodeURIComponent(lang)}&mode=auto`;
+    });
+  </script>
+</body>
+</html>

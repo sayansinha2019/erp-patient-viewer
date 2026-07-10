@@ -1,8 +1,8 @@
-"""Tests for prescription-scoped chatbot."""
+"""Tests for document chatbot."""
 
 import pytest
 
-from backend.chatbot import OFF_TOPIC_REPLY, chat_about_prescription
+from backend.chatbot import _educational_reply, chat_about_prescription
 from backend.fhir_parser import load_sample
 from backend.humanizer import humanize
 
@@ -28,6 +28,26 @@ def test_chat_endpoint_schema():
     assert resp.status_code == 400
 
 
+def test_educational_copayment_no_refusal(prescription_context):
+    parsed, humanized = prescription_context
+    reply = _educational_reply("what does co payment mean?", parsed, humanized, "en")
+    assert reply
+    assert "co-payment" in reply.lower() or "zuzahlung" in reply.lower()
+    assert "only" not in reply.lower() or "insurance" in reply.lower()
+
+
+def test_educational_appointment_booking():
+    reply = _educational_reply("how to book specialist appointment", {}, {}, "en")
+    assert reply
+    assert "appointment" in reply.lower() or "practice" in reply.lower() or "gp" in reply.lower()
+
+
+def test_educational_pharmacy():
+    reply = _educational_reply("How do I redeem at pharmacy?", {}, {}, "en")
+    assert reply
+    assert "pharmacy" in reply.lower()
+
+
 @pytest.mark.skipif(not __import__("backend.gemini_client", fromlist=["is_available"]).is_available(), reason="no gemini key")
 def test_chat_on_topic(prescription_context):
     parsed, humanized = prescription_context
@@ -42,6 +62,20 @@ def test_chat_on_topic(prescription_context):
 
 
 @pytest.mark.skipif(not __import__("backend.gemini_client", fromlist=["is_available"]).is_available(), reason="no gemini key")
+def test_chat_copayment_explains(prescription_context):
+    parsed, humanized = prescription_context
+    result = chat_about_prescription(
+        "what does co payment means?",
+        parsed,
+        humanized,
+    )
+    assert result["available"]
+    assert result["on_topic"]
+    assert "co-payment" in result["reply"].lower() or "zuzahlung" in result["reply"].lower()
+    assert "does not contain" not in result["reply"].lower()
+
+
+@pytest.mark.skipif(not __import__("backend.gemini_client", fromlist=["is_available"]).is_available(), reason="no gemini key")
 def test_chat_off_topic(prescription_context):
     parsed, humanized = prescription_context
     result = chat_about_prescription(
@@ -50,4 +84,4 @@ def test_chat_off_topic(prescription_context):
         humanized,
     )
     assert result["available"]
-    assert result["on_topic"] is False or "only" in result["reply"].lower() or "prescription" in result["reply"].lower()
+    assert result["on_topic"] is False or "weather" in result["reply"].lower() or "can't" in result["reply"].lower()

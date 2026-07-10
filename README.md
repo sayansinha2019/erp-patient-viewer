@@ -1,60 +1,59 @@
-# E-Rezept Patient Viewer
+# Klarify — full health document pipeline
 
-Demo app that parses [gematik/api-erp](https://github.com/gematik/api-erp) FHIR e-prescription samples and explains them in plain language, with optional translation.
+Explain German health documents (e-prescriptions, lab results, discharge letters, referrals, doctor letters, PDFs) in plain language.
 
-## What this does
+## Pipeline layers
 
-1. **Parse** — Reads FHIR Bundle XML/JSON from the api-erp `samples/qes/` folder (or uploads).
-2. **Humanize** — Maps technical FHIR codes (PZN, co-payment status, insurance type, etc.) to patient-friendly English.
-3. **Translate** — Uses **Google Gemini** (when `GEMINI_API_KEY` is set) for accurate, context-aware translation and a plain-language patient summary. Supports **50+ languages**, **offline mode**, and **disk cache**.
+| Layer | Module | Capability |
+|-------|--------|------------|
+| **L4** | `document_router`, `parsers/*`, `epa_client`, `pdf_ingest` | FHIR + PDF ingest, ePA mock/HAPI/TITUS |
+| **L1** | `rag_engine`, `dictionaries/clinical_index`, `translator` | RAG + ICD-10/LOINC/ATC + Chroma + Gemini |
+| **L2** | `flagging/*` | LOINC ranges, drug interactions, follow-up detection |
+| **L3** | `storage` | Accounts, AES-256 encrypted timeline, trends, consent log |
+| **QA** | `clinical_qa` | Ground-truth validation suite |
 
-4. **Fetch from E-Rezept** — Mock Fachdienst (default) or live TI with Bearer token.
+## Document types
 
-## Configuration
+- `prescription` — E-Rezept (gematik samples)
+- `lab_result` — DiagnosticReport + Observation
+- `discharge` — Entlassbrief (Composition)
+- `referral` — Überweisung (ServiceRequest)
+- `doctor_letter` — Arztbrief (Composition)
+- `pdf` — PyMuPDF + optional OCR
 
-Copy `.env.example` to `.env`:
+## Screens
 
-```bash
-cp .env.example .env
-```
-
-Key settings:
-
-| Variable | Purpose |
-|----------|---------|
-| `GEMINI_API_KEY` | Gemini translation (optional but recommended) |
-| `TRANSLATION_MODE` | `auto` \| `gemini` \| `offline` \| `online` |
-| `ERP_MODE` | `mock` (demo) or `live` (real TI) |
-| `ERP_ACCESS_TOKEN` | Bearer token from gematik IDP (live only) |
-
-## How to test
-
-See **[TESTING.md](TESTING.md)** for step-by-step instructions (samples, offline mode, mock Fachdienst, live TI).
+| Route | Purpose |
+|-------|---------|
+| `/` | Language selection |
+| `/home` | Upload or connect ePA |
+| `/upload` | File upload + consent (PDF/FHIR) |
+| `/epa` | ePA document browser (sandbox) |
+| `/account` | Register / login |
+| `/timeline` | Saved health history + lab trends |
+| `/results` | Explanation + flags + chat |
 
 ## Quick start
 
 ```bash
 cd erp-patient-viewer
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 uvicorn backend.main:app --reload --port 8080
 ```
 
-Open http://localhost:8080
-
-## Run tests
+## Clinical QA
 
 ```bash
 pytest tests/ -v
+curl http://localhost:8080/api/qa/run
 ```
 
-## About api-erp
+## Configuration
 
-The upstream repo is **API documentation** for Germany's E-Rezept (electronic prescription), not a runnable patient app. This project wraps its **dummy FHIR samples** in a testable pipeline plus a simple UI.
+See `.env.example` for `GEMINI_API_KEY`, `EPA_MODE`, `KLARIFY_ZERO_RETENTION`, etc.
 
-The gematik doc build (`resources/scripts/build_with_replace_includes.sh`) requires Ruby Asciidoctor and is separate from this demo.
+**HAPI FHIR local:** `EPA_MODE=hapi` + `docker run -p 8080:8080 hapiproject/hapi:latest`
 
-## Disclaimer
-
-Demo only — not for clinical or production use.
+Disclaimer: Informational demo — not for clinical use.

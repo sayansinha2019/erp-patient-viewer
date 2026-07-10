@@ -1,0 +1,40 @@
+{
+  "resourceType": "Bundle",
+  "type": "document",
+  "id": "discharge-sample-001",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Composition",
+        "id": "comp1",
+        "title": "Entlassbrief",
+        "date": "2026-07-08",
+        "type": {"coding": [{"code": "18842-5"}]},
+        "section": [
+          {
+            "title": "Diagnose",
+            "text": {"div": "<div>Diabetes mellitus Typ 2 (E11.9) mit diabetischer Nephropathie (N18.3). Nachkontrolle in 4 Wochen bei Nephrologie empfohlen.</div>"}
+          },
+          {
+            "title": "Medikation",
+            "text": {"div": "<div>Metformin 500mg 1-0-1 fortsetzen. Enalapril 10mg 1-0-0.</div>"}
+          }
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "medicationCodeableConcept": {"text": "Metformin 500mg"},
+        "status": "active"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "medicationCodeableConcept": {"text": "Enalapril 10mg"},
+        "status": "active"
+      }
+    }
+  ]
+}

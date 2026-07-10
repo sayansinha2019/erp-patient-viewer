@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Klarify — Health timeline</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <button type="button" class="back-btn" onclick="location.href='/account'">←</button>
+    <span>My health</span>
+    <span style="width:48px;"></span>
+  </header>
+  <main class="screen">
+    <h1 class="screen-title">Health timeline</h1>
+    <div id="timeline"></div>
+    <h2 style="font-size:1.125rem;margin-top:2rem;">Trends</h2>
+    <div id="trends"></div>
+  </main>
+  <script>
+    const auth = JSON.parse(sessionStorage.getItem('klarify_auth') || 'null');
+    if (!auth?.token) { location.href = '/account'; }
+
+    async function load() {
+      const headers = { Authorization: `Bearer ${auth.token}` };
+      const tl = await fetch(`/api/timeline?password=${encodeURIComponent(auth.password)}`, { headers }).then(r => r.json());
+      const tr = await fetch(`/api/trends?password=${encodeURIComponent(auth.password)}`, { headers }).then(r => r.json());
+      const tel = document.getElementById('timeline');
+      tel.innerHTML = '';
+      for (const item of tl.timeline || []) {
+        const card = document.createElement('div');
+        card.className = 'explanation-card';
+        card.innerHTML = `<p class="card-label">${item.document_type}</p><p class="plain"><strong>${item.title}</strong><br>${item.date}<br>${item.summary || ''}</p>`;
+        tel.appendChild(card);
+      }
+      if (!tl.timeline?.length) tel.innerHTML = '<p class="subtitle-muted">No saved documents yet. Save an explanation from the results page.</p>';
+      const trel = document.getElementById('trends');
+      trel.innerHTML = '';
+      for (const t of tr.trends || []) {
+        const card = document.createElement('div');
+        card.className = 'flag-card informational';
+        card.innerHTML = `<h3>${t.loinc_code}</h3><p>Values: ${t.values.join(' → ')} (${t.change_pct}% change)</p>`;
+        trel.appendChild(card);
+      }
+      if (!tr.trends?.length) trel.innerHTML = '<p class="subtitle-muted">Trends appear when you have two or more lab results saved.</p>';
+    }
+    load();
+  </script>
+</body>
+</html>

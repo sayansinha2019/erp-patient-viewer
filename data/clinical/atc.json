@@ -1,0 +1,12 @@
+{
+  "A10BA02": {"name": "Metformin", "class": "Antidiabetic", "route": "oral"},
+  "H03AA01": {"name": "Levothyroxine", "class": "Thyroid hormone", "route": "oral"},
+  "C09AA02": {"name": "Enalapril", "class": "ACE inhibitor", "route": "oral"},
+  "C07AB02": {"name": "Metoprolol", "class": "Beta blocker", "route": "oral"},
+  "N02BE01": {"name": "Paracetamol", "class": "Analgesic", "route": "oral"},
+  "N03AX16": {"name": "Gabapentin", "class": "Antiepileptic", "route": "oral"},
+  "B01AC06": {"name": "Acetylsalicylic acid", "class": "Antiplatelet", "route": "oral"},
+  "C10AA01": {"name": "Simvastatin", "class": "Statin", "route": "oral"},
+  "A02BC01": {"name": "Omeprazole", "class": "Proton pump inhibitor", "route": "oral"},
+  "R03AC02": {"name": "Salbutamol", "class": "Bronchodilator", "route": "inhalation"}
+}

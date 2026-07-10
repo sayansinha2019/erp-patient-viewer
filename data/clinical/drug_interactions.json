@@ -1,0 +1,7 @@
+[
+  {"atc_a": "B01AC06", "atc_b": "C09AA02", "severity": "major", "description": "ACE inhibitors with aspirin may reduce antihypertensive effect"},
+  {"atc_a": "A10BA02", "atc_b": "C09AA02", "severity": "moderate", "description": "Metformin with ACE inhibitors — monitor kidney function"},
+  {"atc_a": "C10AA01", "atc_b": "A02BC01", "severity": "moderate", "description": "Statins with omeprazole may increase statin levels"},
+  {"atc_a": "N03AX16", "atc_b": "N02BE01", "severity": "minor", "description": "Gabapentin with paracetamol — generally safe, monitor sedation"},
+  {"atc_a": "C07AB02", "atc_b": "R03AC02", "severity": "major", "description": "Beta blockers may blunt bronchodilator response"}
+]

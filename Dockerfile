@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements-prod.txt
 
 COPY backend/ ./backend/
 COPY static/ ./static/
+COPY data/ ./data/
 
 # Bundle gematik FHIR sample prescriptions for demo mode
 RUN git clone --depth 1 https://github.com/gematik/api-erp.git /tmp/api-erp \

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Klarify — ePA</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <button type="button" class="back-btn" onclick="location.href='/home'">←</button>
+    <span>ePA</span>
+    <span style="width:48px;"></span>
+  </header>
+  <main class="screen">
+    <h1 class="screen-title">Connect ePA</h1>
+    <p class="lead" id="epaStatus">Checking connection…</p>
+    <button type="button" class="btn-primary" id="connectBtn">Connect (sandbox)</button>
+    <div id="docList" style="margin-top:2rem;"></div>
+  </main>
+  <script src="/static/i18n.js"></script>
+  <script>
+    if (!sessionStorage.getItem('klarify_lang')) location.href = '/';
+    applyRtl();
+    let token = sessionStorage.getItem('epa_token') || 'sandbox-demo-token';
+
+    async function init() {
+      const st = await fetch('/api/epa/status').then(r => r.json());
+      document.getElementById('epaStatus').textContent =
+        `Mode: ${st.epa.mode} · ${st.connectivity.reachable ? 'Connected' : 'Offline (mock data available)'}`;
+      if (token) loadDocs();
+    }
+
+    async function loadDocs() {
+      const res = await fetch('/api/epa/documents?patient_id=demo-patient', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      const el = document.getElementById('docList');
+      el.innerHTML = '<h2 style="font-size:1.125rem;">Your ePA documents</h2>';
+      for (const d of data.documents || []) {
+        const btn = document.createElement('button');
+        btn.className = 'btn-secondary';
+        btn.style.marginTop = '0.5rem';
+        btn.textContent = `${d.title} (${d.type})`;
+        btn.onclick = () => {
+          const lang = klarifyLang();
+          window.location.href = `/results?type=epa&doc_id=${encodeURIComponent(d.id)}&lang=${encodeURIComponent(lang)}`;
+        };
+        el.appendChild(btn);
+      }
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      const data = await fetch('/api/epa/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'sandbox-demo', redirect_uri: window.location.origin + '/epa' }),
+      }).then(r => r.json());
+      token = data.access_token;
+      sessionStorage.setItem('epa_token', token);
+      loadDocs();
+    });
+
+    init();
+  </script>
+</body>
+</html>

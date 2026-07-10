@@ -1,0 +1,11 @@
+{
+  "id": "lab_result_diabetes",
+  "sample": "data/samples/documents/lab_result_diabetes.json",
+  "lang": "de",
+  "expect": {
+    "summary_contains": [],
+    "flag_codes": ["lab_4548-4"],
+    "forbidden_phrases": ["WARNING", "you have kidney disease"],
+    "observations_min": 2
+  }
+}

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Klarify — Upload</title>
+  <link rel="stylesheet" href="/static/shared.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <button type="button" class="back-btn" onclick="location.href='/home'" aria-label="Back">←</button>
+    <span id="appBarTitle">Upload</span>
+    <span style="width:48px;"></span>
+  </header>
+
+  <main class="screen">
+    <h1 class="screen-title" id="uploadTitle">Upload your document</h1>
+    <p class="subtitle-muted" id="uploadSubtitle"></p>
+
+    <div class="upload-zone" id="uploadZone" tabindex="0" role="button">
+      <div style="font-size:2.5rem;margin-bottom:0.5rem;">📄</div>
+      <p id="uploadTap" style="margin:0;font-size:1.125rem;color:var(--color-slate);">Tap to choose a file</p>
+      <p id="uploadTypes" style="margin:0.5rem 0 0;font-size:0.875rem;color:var(--color-muted);">PDF, FHIR XML or JSON · Up to 20 MB</p>
+      <p id="fileName" style="margin-top:1rem;font-weight:600;display:none;"></p>
+    </div>
+    <input type="file" id="fileInput" accept=".xml,.json,.pdf" hidden />
+
+    <label class="consent-row">
+      <input type="checkbox" id="consent" />
+      <span id="consentText">I understand my document will be explained and then deleted immediately.</span>
+    </label>
+
+    <button type="button" class="btn-primary" id="explainBtn" disabled>Read my explanation</button>
+  </main>
+
+  <script src="/static/i18n.js"></script>
+  <script>
+    if (!sessionStorage.getItem('klarify_lang')) location.href = '/';
+    applyRtl();
+
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const consent = document.getElementById('consent');
+    const explainBtn = document.getElementById('explainBtn');
+    const fileNameEl = document.getElementById('fileName');
+    let selectedFile = null;
+
+    document.getElementById('uploadTitle').textContent = t('uploadTitle');
+    const sub = t('uploadSubtitle');
+    document.getElementById('uploadSubtitle').textContent = sub;
+    document.getElementById('uploadSubtitle').style.display = sub ? 'block' : 'none';
+    document.getElementById('uploadTap').textContent = t('uploadTap');
+    document.getElementById('uploadTypes').textContent = 'PDF, FHIR XML or JSON · Up to 20 MB';
+    document.getElementById('consentText').textContent = t('consent');
+    explainBtn.textContent = t('explainBtn');
+    document.getElementById('appBarTitle').textContent = t('uploadDoc');
+
+    function updateBtn() {
+      explainBtn.disabled = !(selectedFile && consent.checked);
+    }
+
+    function pickFile(file) {
+      selectedFile = file;
+      fileNameEl.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
+      fileNameEl.style.display = 'block';
+      uploadZone.classList.add('has-file');
+      updateBtn();
+    }
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') fileInput.click();
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) pickFile(fileInput.files[0]);
+    });
+    consent.addEventListener('change', updateBtn);
+
+    explainBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      explainBtn.disabled = true;
+      explainBtn.textContent = '…';
+      const fd = new FormData();
+      fd.append('file', selectedFile);
+      fd.append('lang', klarifyLang());
+      fd.append('mode', 'auto');
+      try {
+        const res = await fetch('/api/process', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Upload failed');
+        sessionStorage.setItem('klarify_result', JSON.stringify(data));
+        window.location.href = `/results?type=cached&lang=${encodeURIComponent(klarifyLang())}`;
+      } catch (e) {
+        alert(e.message);
+        explainBtn.disabled = false;
+        explainBtn.textContent = t('explainBtn');
+      }
+    });
+  </script>
+</body>
+</html>

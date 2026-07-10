@@ -1,0 +1,19 @@
+{
+  "resourceType": "Bundle",
+  "type": "document",
+  "id": "referral-sample-001",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "ServiceRequest",
+        "id": "sr1",
+        "status": "active",
+        "intent": "order",
+        "priority": "urgent",
+        "code": {"text": "Kardiologie"},
+        "reasonCode": [{"text": "Verdacht auf koronare Herzkrankheit", "coding": [{"code": "I25.9"}]}],
+        "note": [{"text": "Bitte zeitnahe ambulante Vorstellung"}]
+      }
+    }
+  ]
+}

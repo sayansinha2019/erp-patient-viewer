@@ -9,6 +9,7 @@ from .gemini_client import enhance_and_translate, is_available
 from .logging_config import get_logger
 from .languages import SUPPORTED_LANGUAGES
 from .offline_translator import translate_offline
+from .settings import zero_retention_enabled
 from .translation_cache import get_cached_bundle, make_bundle_cache_id, set_cached_bundle
 
 
@@ -65,7 +66,8 @@ def translate_humanized(
     log.debug("translate lang=%s mode=%s", target_lang, effective_mode)
 
     cache_id = make_bundle_cache_id(parsed or {}, target_lang) if parsed else None
-    if effective_mode in ("auto", "offline") and cache_id:
+    use_cache = cache_id and not zero_retention_enabled()
+    if effective_mode in ("auto", "offline") and use_cache:
         cached = get_cached_bundle(cache_id)
         if cached:
             return {**humanized, **cached, "translation_provider": "cache", "from_cache": True}
@@ -86,7 +88,7 @@ def translate_humanized(
                 "patient_summary": gemini_result.get("patient_summary"),
                 "gemini_available": True,
             }
-            if cache_id:
+            if cache_id and not zero_retention_enabled():
                 set_cached_bundle(
                     cache_id,
                     {

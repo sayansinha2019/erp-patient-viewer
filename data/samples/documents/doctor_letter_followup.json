@@ -1,0 +1,22 @@
+{
+  "resourceType": "Bundle",
+  "type": "document",
+  "id": "doctor-letter-001",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Composition",
+        "id": "comp1",
+        "title": "Arztbrief",
+        "date": "2026-07-01",
+        "section": [
+          {
+            "text": {
+              "div": "<div>Sehr geehrte Patientin, Ihr Blutzucker ist über dem Zielbereich. Bitte Messwerte mitbringen. Metformin-Dosis unverändert. Kontrolle in 6 Wochen.</div>"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
