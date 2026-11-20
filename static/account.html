@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify — Account</title>
-  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
+  <link rel="stylesheet" href="/static/shared.css?v=20261120b" />
 </head>
 <body class="has-app-bar">
   <header class="app-bar">
@@ -17,59 +17,87 @@
   <main class="screen screen-narrow screen-panel">
     <div class="page-header">
       <h1 class="screen-title">Save your health history</h1>
-      <p class="lead" style="margin-bottom:var(--space-6);">Optional encrypted storage — AES-256, client-side key derivation.</p>
+      <p class="lead" style="margin-bottom:var(--space-6);">Optional encrypted storage — your password is the key, so we can never read your records.</p>
     </div>
-    <label class="form-field">Email
-      <input type="email" id="email" autocomplete="email" />
-    </label>
-    <label class="form-field">Password
-      <input type="password" id="password" autocomplete="current-password" />
-    </label>
-    <div class="btn-row">
-      <button type="button" class="btn-primary" id="registerBtn">Create account</button>
-      <button type="button" class="btn-secondary" id="loginBtn">Log in</button>
+
+    <div id="loggedIn" hidden>
+      <p class="lead">Logged in as <strong id="whoami"></strong></p>
+      <div class="btn-row">
+        <button type="button" class="btn-primary" id="timelineBtn">View health timeline →</button>
+        <button type="button" class="btn-secondary" id="logoutBtn">Log out</button>
+      </div>
     </div>
-    <button type="button" class="btn-ghost block" id="timelineBtn" style="margin-top:1rem;">View health timeline →</button>
-    <p id="msg" class="subtitle-muted"></p>
+
+    <form id="authForm" novalidate>
+      <p class="form-error" id="msg" role="alert"></p>
+      <label class="form-field">Email
+        <input type="email" id="email" autocomplete="email" required />
+      </label>
+      <label class="form-field">Password
+        <input type="password" id="password" autocomplete="current-password" minlength="8" required />
+        <span class="form-hint">At least 8 characters. If you forget it, saved records can't be recovered.</span>
+      </label>
+      <div class="btn-row">
+        <button type="submit" class="btn-primary" id="loginBtn">Log in</button>
+        <button type="button" class="btn-secondary" id="registerBtn">Create account</button>
+      </div>
+    </form>
   </main>
+  <script src="/static/i18n.js?v=20261120b"></script>
+  <script src="/static/ui.js?v=20261120b"></script>
   <script>
-    function saveAuth(data) {
-      sessionStorage.setItem('klarify_auth', JSON.stringify({ ...data, password: password.value }));
+    applyRtl();
+    const form = document.getElementById('authForm');
+    const emailEl = document.getElementById('email');
+    const passwordEl = document.getElementById('password');
+    const msg = document.getElementById('msg');
+    const loginBtn = document.getElementById('loginBtn');
+    const registerBtn = document.getElementById('registerBtn');
+
+    const existing = JSON.parse(sessionStorage.getItem('klarify_auth') || 'null');
+    if (existing?.token) {
+      document.getElementById('loggedIn').hidden = false;
+      document.getElementById('whoami').textContent = existing.email || 'your account';
+      form.hidden = true;
+    }
+    document.getElementById('timelineBtn').onclick = () => { location.href = '/timeline'; };
+    document.getElementById('logoutBtn').onclick = () => {
+      sessionStorage.removeItem('klarify_auth');
+      location.reload();
+    };
+
+    function validate(isRegister) {
+      const email = emailEl.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Please enter a valid email address.';
+      if (!passwordEl.value) return 'Please enter your password.';
+      if (isRegister && passwordEl.value.length < 8) return 'Password must be at least 8 characters.';
+      return '';
     }
 
-    function goToTimeline() {
-      window.location.href = '/timeline';
+    async function submit(isRegister) {
+      const problem = validate(isRegister);
+      msg.textContent = problem;
+      if (problem) return;
+      const btn = isRegister ? registerBtn : loginBtn;
+      setBusy(loginBtn, true); setBusy(registerBtn, true);
+      try {
+        const data = await apiFetch(isRegister ? '/api/auth/register' : '/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailEl.value.trim(), password: passwordEl.value }),
+        });
+        sessionStorage.setItem('klarify_auth', JSON.stringify({ ...data, email: emailEl.value.trim(), password: passwordEl.value }));
+        const next = new URLSearchParams(location.search).get('next');
+        location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/timeline';
+      } catch (e) {
+        msg.textContent = e.message;
+        setBusy(loginBtn, false); setBusy(registerBtn, false);
+        btn.focus();
+      }
     }
 
-    document.getElementById('registerBtn').onclick = async () => {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.value, password: password.value }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        saveAuth(data);
-        goToTimeline();
-      } else {
-        document.getElementById('msg').textContent = data.detail || 'Error';
-      }
-    };
-    document.getElementById('loginBtn').onclick = async () => {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.value, password: password.value }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        saveAuth(data);
-        goToTimeline();
-      } else {
-        document.getElementById('msg').textContent = data.detail || 'Login failed';
-      }
-    };
-    document.getElementById('timelineBtn').onclick = () => location.href = '/timeline';
-    const email = document.getElementById('email');
-    const password = document.getElementById('password');
+    form.addEventListener('submit', (e) => { e.preventDefault(); submit(false); });
+    registerBtn.addEventListener('click', () => submit(true));
   </script>
 </body>
 </html>

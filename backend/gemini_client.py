@@ -7,25 +7,70 @@ import os
 import re
 from typing import Any
 
+from .logging_config import get_logger
+
+log = get_logger("gemini")
 _CLIENT: Any = None
-_DEFAULT_MODEL = "gemini-2.5-flash"
+_DEFAULT_MODEL = "gemini-3-flash-preview"
+
+
+def _service_account_info() -> dict[str, Any] | None:
+    """Service account JSON from GCP_SERVICE_ACCOUNT_KEY (inline JSON) if set."""
+    raw = (os.getenv("GCP_SERVICE_ACCOUNT_KEY") or "").strip()
+    if not raw:
+        return None
+    try:
+        info = json.loads(raw)
+        return info if info.get("type") == "service_account" else None
+    except json.JSONDecodeError:
+        log.error("GCP_SERVICE_ACCOUNT_KEY is not valid JSON — ignoring it")
+        return None
 
 
 def _get_client():
+    """
+    Prefer Vertex AI (service account) when configured, else the Gemini API key.
+
+    Vertex: GCP_SERVICE_ACCOUNT_KEY (inline JSON) or GOOGLE_APPLICATION_CREDENTIALS (file),
+    plus GCP_PROJECT_ID and optional GCP_LOCATION (default "global").
+    """
     global _CLIENT
     if _CLIENT is not None:
         return _CLIENT
 
+    try:
+        from google import genai
+    except Exception:
+        log.exception("google-genai is not installed")
+        return None
+
+    info = _service_account_info()
+    project = os.getenv("GCP_PROJECT_ID") or (info or {}).get("project_id")
+    location = os.getenv("GCP_LOCATION", "global")
+    use_adc = os.getenv("GEMINI_USE_VERTEX", "").lower() in ("1", "true", "yes")  # e.g. Cloud Run identity
+    if project and (info or os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or use_adc):
+        try:
+            creds = None
+            if info:
+                from google.oauth2 import service_account
+
+                creds = service_account.Credentials.from_service_account_info(
+                    info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
+            _CLIENT = genai.Client(vertexai=True, project=project, location=location, credentials=creds)
+            log.info("Gemini via Vertex AI (project=%s, location=%s)", project, location)
+            return _CLIENT
+        except Exception:
+            log.exception("Could not create Vertex AI client — falling back to API key")
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return None
-
     try:
-        from google import genai
-
         _CLIENT = genai.Client(api_key=api_key)
         return _CLIENT
     except Exception:
+        log.exception("Could not create Gemini client")
         return None
 
 
@@ -63,15 +108,27 @@ def _generate_text(prompt: str, json_mode: bool = False) -> str | None:
             config=config,
         )
         return response.text
-    except Exception:
+    except Exception as first_exc:
+        if _is_auth_error(first_exc) or "404" in str(first_exc):
+            log.error("Gemini rejected the request (key or billing) — check GEMINI_API_KEY / AI Studio credits: %s", str(first_exc)[:200])
+            return None
         try:
             response = client.models.generate_content(
                 model=_model_name(),
                 contents=prompt,
             )
             return response.text
-        except Exception:
+        except Exception as exc:
+            log.warning("Gemini request failed: %s", str(exc)[:300])
             return None
+
+
+def _is_auth_error(exc: Exception) -> bool:
+    text = str(exc)
+    return any(
+        marker in text
+        for marker in ("401", "402", "403", "API key not valid", "PERMISSION_DENIED", "UNAUTHENTICATED", "credits are depleted")
+    )
 
 
 def enhance_and_translate(

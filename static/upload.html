@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify — Upload</title>
-  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
+  <link rel="stylesheet" href="/static/shared.css?v=20261120b" />
 </head>
 <body class="has-app-bar">
   <header class="app-bar">
@@ -21,13 +21,15 @@
       <p class="subtitle-muted" id="uploadSubtitle"></p>
     </div>
 
-    <div class="upload-zone" id="uploadZone" tabindex="0" role="button">
-      <div style="font-size:2.5rem;margin-bottom:0.5rem;">📄</div>
+    <div class="upload-zone" id="uploadZone" tabindex="0" role="button" aria-describedby="uploadTypes">
+      <div style="font-size:2.5rem;margin-bottom:0.5rem;" aria-hidden="true">📄</div>
       <p id="uploadTap" style="margin:0;font-size:1.125rem;color:var(--color-slate);">Tap to choose a file</p>
       <p id="uploadTypes" style="margin:0.5rem 0 0;font-size:0.875rem;color:var(--color-muted);">PDF, FHIR XML or JSON · Up to 20 MB</p>
       <p id="fileName" style="margin-top:1rem;font-weight:600;display:none;"></p>
     </div>
-    <input type="file" id="fileInput" accept=".xml,.json,.pdf" hidden />
+    <input type="file" id="fileInput" accept=".xml,.json,.pdf,application/pdf,application/json,text/xml,application/xml" hidden />
+
+    <p class="form-error" id="uploadError" role="alert"></p>
 
     <label class="consent-row">
       <input type="checkbox" id="consent" />
@@ -37,16 +39,20 @@
     <button type="button" class="btn-primary" id="explainBtn" disabled>Read my explanation</button>
   </main>
 
-  <script src="/static/i18n.js"></script>
+  <script src="/static/i18n.js?v=20261120b"></script>
+  <script src="/static/ui.js?v=20261120b"></script>
   <script>
     if (!sessionStorage.getItem('klarify_lang')) location.href = '/';
     applyRtl();
 
+    const MAX_BYTES = 20 * 1024 * 1024;
+    const ALLOWED = ['pdf', 'xml', 'json'];
     const uploadZone = document.getElementById('uploadZone');
     const fileInput = document.getElementById('fileInput');
     const consent = document.getElementById('consent');
     const explainBtn = document.getElementById('explainBtn');
     const fileNameEl = document.getElementById('fileName');
+    const errorEl = document.getElementById('uploadError');
     let selectedFile = null;
 
     document.getElementById('uploadTitle').textContent = t('uploadTitle');
@@ -54,7 +60,6 @@
     document.getElementById('uploadSubtitle').textContent = sub;
     document.getElementById('uploadSubtitle').style.display = sub ? 'block' : 'none';
     document.getElementById('uploadTap').textContent = t('uploadTap');
-    document.getElementById('uploadTypes').textContent = 'PDF, FHIR XML or JSON · Up to 20 MB';
     document.getElementById('consentText').textContent = t('consent');
     explainBtn.textContent = t('explainBtn');
     document.getElementById('appBarTitle').textContent = t('uploadDoc');
@@ -63,9 +68,27 @@
       explainBtn.disabled = !(selectedFile && consent.checked);
     }
 
+    function formatSize(bytes) {
+      return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    }
+
     function pickFile(file) {
+      errorEl.textContent = '';
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (!ALLOWED.includes(ext)) {
+        errorEl.textContent = 'Please choose a PDF, XML or JSON file.';
+        return;
+      }
+      if (file.size > MAX_BYTES) {
+        errorEl.textContent = `This file is ${formatSize(file.size)} — the limit is 20 MB.`;
+        return;
+      }
+      if (file.size === 0) {
+        errorEl.textContent = 'This file is empty.';
+        return;
+      }
       selectedFile = file;
-      fileNameEl.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
+      fileNameEl.textContent = `✓ ${file.name} (${formatSize(file.size)})`;
       fileNameEl.style.display = 'block';
       uploadZone.classList.add('has-file');
       updateBtn();
@@ -73,31 +96,48 @@
 
     uploadZone.addEventListener('click', () => fileInput.click());
     uploadZone.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') fileInput.click();
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
     });
     fileInput.addEventListener('change', () => {
       if (fileInput.files[0]) pickFile(fileInput.files[0]);
+      fileInput.value = '';
     });
+
+    // Drag & drop
+    ['dragenter', 'dragover'].forEach((ev) => uploadZone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('is-dragover');
+    }));
+    ['dragleave', 'dragend', 'drop'].forEach((ev) => uploadZone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('is-dragover');
+    }));
+    uploadZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (file) pickFile(file);
+    });
+    // Prevent the browser from opening a file dropped outside the zone
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
+
     consent.addEventListener('change', updateBtn);
 
     explainBtn.addEventListener('click', async () => {
-      if (!selectedFile) return;
-      explainBtn.disabled = true;
-      explainBtn.textContent = '…';
+      if (!selectedFile || !consent.checked) return;
+      errorEl.textContent = '';
+      setBusy(explainBtn, true);
       const fd = new FormData();
       fd.append('file', selectedFile);
       fd.append('lang', klarifyLang());
       fd.append('mode', 'auto');
       try {
-        const res = await fetch('/api/process', { method: 'POST', body: fd });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Upload failed');
+        const data = await apiFetch('/api/process', { method: 'POST', body: fd });
         sessionStorage.setItem('klarify_result', JSON.stringify(data));
         window.location.href = `/results?type=cached&lang=${encodeURIComponent(klarifyLang())}`;
       } catch (e) {
-        alert(e.message);
-        explainBtn.disabled = false;
-        explainBtn.textContent = t('explainBtn');
+        errorEl.textContent = e.message;
+        setBusy(explainBtn, false);
+        updateBtn();
       }
     });
   </script>

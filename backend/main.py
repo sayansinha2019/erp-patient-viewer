@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -28,6 +29,7 @@ from . import storage
 APP_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = APP_DIR / "static"
 DOCUMENT_SAMPLES = APP_DIR / "data" / "samples" / "documents"
+MAX_UPLOAD_BYTES = int(os.getenv("KLARIFY_MAX_UPLOAD_MB", "20")) * 1024 * 1024
 
 
 def _samples_dir() -> Path:
@@ -44,11 +46,17 @@ def _samples_dir() -> Path:
 SAMPLES_DIR = _samples_dir()
 
 app = FastAPI(title="Klarify", description="Explain German health documents in plain language.", version="1.0.0")
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 setup_logging()
 erp = ErpClient()
 epa = EpaClient()
 log = get_logger("api")
+
+
+def _page(name: str) -> FileResponse:
+    """HTML pages always revalidate so a new deploy is picked up immediately."""
+    return FileResponse(STATIC_DIR / name, headers={"Cache-Control": "no-cache"})
 
 
 def _auth_user(authorization: Optional[str] = Header(None)) -> Optional[str]:
@@ -66,7 +74,8 @@ def health():
         "version": "1.0.0",
         "pipeline_layers": ["l1_translation", "l2_flagging", "l3_storage", "l4_fhir"],
         "document_types": ["prescription", "lab_result", "discharge", "referral", "doctor_letter", "pdf"],
-        "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
+        "gemini_configured": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GCP_SERVICE_ACCOUNT_KEY") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")),
+        "samples_count": len(list(SAMPLES_DIR.glob("*.xml"))) if SAMPLES_DIR.exists() else 0,
         "epa_mode": epa.mode,
         "zero_retention": zero_retention_enabled(),
     }
@@ -74,37 +83,37 @@ def health():
 
 @app.get("/")
 def language_page():
-    return FileResponse(STATIC_DIR / "language.html")
+    return _page("language.html")
 
 
 @app.get("/home")
 def home_page():
-    return FileResponse(STATIC_DIR / "home.html")
+    return _page("home.html")
 
 
 @app.get("/upload")
 def upload_page():
-    return FileResponse(STATIC_DIR / "upload.html")
+    return _page("upload.html")
 
 
 @app.get("/epa")
 def epa_page():
-    return FileResponse(STATIC_DIR / "epa.html")
+    return _page("epa.html")
 
 
 @app.get("/account")
 def account_page():
-    return FileResponse(STATIC_DIR / "account.html")
+    return _page("account.html")
 
 
 @app.get("/timeline")
 def timeline_page():
-    return FileResponse(STATIC_DIR / "timeline.html")
+    return _page("timeline.html")
 
 
 @app.get("/results")
 def results_page():
-    return FileResponse(STATIC_DIR / "results.html")
+    return _page("results.html")
 
 
 @app.get("/api/languages")
@@ -145,7 +154,11 @@ def process_sample(sample_id: str, lang: str = "de", mode: Optional[str] = None)
 
 @app.post("/api/process")
 async def process_upload(file: UploadFile = File(...), lang: str = Form("de"), mode: Optional[str] = Form(None)):
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"File is too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB).")
+    if not content:
+        raise HTTPException(400, "The file is empty.")
     try:
         out = process_document(content, filename=file.filename or "upload.xml", lang=lang, mode=mode)
     except Exception as exc:
@@ -164,6 +177,7 @@ async def process_raw(payload: dict):
     try:
         out = process_document(content, filename=filename, lang=lang, mode=mode)
     except Exception as exc:
+        log.exception("raw processing failed: %s", filename)
         raise HTTPException(400, f"Could not read this document: {exc}") from exc
     out["filename"] = filename
     return out
@@ -212,7 +226,8 @@ def epa_process_document(doc_id: str, lang: str = "de", mode: Optional[str] = No
 # --- E-Rezept Fachdienst ---
 @app.get("/api/erp/status")
 def erp_status():
-    return {"erp": ErpClient().status(), "connectivity": ErpClient().check_connectivity()}
+    client = ErpClient()
+    return {"erp": client.status(), "connectivity": client.check_connectivity()}
 
 
 @app.get("/api/erp/mock/tasks")
@@ -241,43 +256,56 @@ def erp_fetch_task(task_id: str, lang: str = "de", mode: Optional[str] = None, a
 @app.post("/api/auth/register")
 def auth_register(payload: dict):
     try:
-        return storage.register_user(payload["email"], payload["password"])
-    except Exception as exc:
+        return storage.register_user(payload.get("email", ""), payload.get("password", ""))
+    except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/auth/login")
 def auth_login(payload: dict):
     try:
-        return storage.login_user(payload["email"], payload["password"])
+        return storage.login_user(payload.get("email", ""), payload.get("password", ""))
     except ValueError as exc:
         raise HTTPException(401, str(exc)) from exc
 
 
+def _require_user(user_id: Optional[str]) -> str:
+    if not user_id:
+        raise HTTPException(401, "Your session has expired — please log in again.")
+    return user_id
+
+
 @app.post("/api/storage/save")
 def save_explanation(payload: dict, user_id: Optional[str] = Depends(_auth_user)):
-    if not user_id:
-        raise HTTPException(401, "Login required to save explanations")
+    user_id = _require_user(user_id)
+    record = payload.get("record")
+    if not isinstance(record, dict):
+        raise HTTPException(400, "Nothing to save.")
     try:
-        rid = storage.save_health_record(user_id, payload["password"], payload["record"])
-        storage.log_consent(user_id, "storage_opt_in", "1.0")
-        return {"record_id": rid}
-    except Exception as exc:
-        raise HTTPException(400, str(exc)) from exc
+        rid = storage.save_health_record(user_id, payload.get("password", ""), record)
+    except storage.AuthError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    storage.log_consent(user_id, "storage_opt_in", "1.0")
+    return {"record_id": rid}
 
 
-@app.get("/api/timeline")
-def get_timeline(password: str, user_id: Optional[str] = Depends(_auth_user)):
-    if not user_id:
-        raise HTTPException(401, "Login required")
-    return {"timeline": storage.list_timeline(user_id, password)}
+# Password travels in the POST body (never in the URL / access logs).
+@app.post("/api/timeline")
+def get_timeline(payload: dict, user_id: Optional[str] = Depends(_auth_user)):
+    user_id = _require_user(user_id)
+    try:
+        return {"timeline": storage.list_timeline(user_id, payload.get("password", ""))}
+    except storage.AuthError as exc:
+        raise HTTPException(401, str(exc)) from exc
 
 
-@app.get("/api/trends")
-def get_trends(password: str, user_id: Optional[str] = Depends(_auth_user)):
-    if not user_id:
-        raise HTTPException(401, "Login required")
-    return {"trends": storage.compute_trends(user_id, password)}
+@app.post("/api/trends")
+def get_trends(payload: dict, user_id: Optional[str] = Depends(_auth_user)):
+    user_id = _require_user(user_id)
+    try:
+        return {"trends": storage.compute_trends(user_id, payload.get("password", ""))}
+    except storage.AuthError as exc:
+        raise HTTPException(401, str(exc)) from exc
 
 
 # --- Clinical QA ---

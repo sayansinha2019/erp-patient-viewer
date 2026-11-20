@@ -86,7 +86,7 @@ def _get_chroma_index():
         import chromadb
         from chromadb.config import Settings
 
-        persist = Path(__file__).resolve().parent.parent.parent / ".cache" / "chroma"
+        persist = Path(os.getenv("KLARIFY_CACHE_DIR") or (Path(__file__).resolve().parents[2] / ".cache")) / "chroma"
         persist.mkdir(parents=True, exist_ok=True)
         client = chromadb.PersistentClient(path=str(persist), settings=Settings(anonymized_telemetry=False))
         collection = client.get_or_create_collection("klarify_clinical")

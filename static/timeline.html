@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify — Health timeline</title>
-  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
+  <link rel="stylesheet" href="/static/shared.css?v=20261120b" />
 </head>
 <body class="has-app-bar">
   <header class="app-bar">
     <div class="app-bar-inner">
-      <button type="button" class="back-btn" onclick="location.href='/account'" aria-label="Back">←</button>
+      <button type="button" class="back-btn" onclick="location.href='/home'" aria-label="Back">←</button>
       <span class="app-bar-title">My health</span>
-      <span class="app-bar-spacer" aria-hidden="true"></span>
+      <button type="button" class="back-btn" id="logoutBtn" aria-label="Log out" title="Log out">⎋</button>
     </div>
   </header>
   <main class="screen screen-wide">
@@ -20,42 +20,84 @@
     </div>
     <div class="timeline-layout">
       <section>
-        <div id="timeline"></div>
+        <div id="timeline"><div class="skeleton"></div><div class="skeleton"></div></div>
       </section>
       <section>
         <h2 class="section-heading">Trends</h2>
-        <div id="trends"></div>
+        <div id="trends"><div class="skeleton"></div></div>
       </section>
     </div>
   </main>
+  <script src="/static/i18n.js?v=20261120b"></script>
+  <script src="/static/ui.js?v=20261120b"></script>
   <script>
+    applyRtl();
     const auth = JSON.parse(sessionStorage.getItem('klarify_auth') || 'null');
-    if (!auth?.token) { location.href = '/account'; }
+    if (!auth?.token) location.replace('/account?next=/timeline');
+
+    document.getElementById('logoutBtn').onclick = () => {
+      sessionStorage.removeItem('klarify_auth');
+      location.href = '/account';
+    };
+
+    const TYPE_LABELS = {
+      prescription: 'Prescription', lab_result: 'Lab result', discharge: 'Discharge letter',
+      referral: 'Referral', doctor_letter: "Doctor's letter", pdf: 'PDF document',
+    };
+
+    async function post(url) {
+      return apiFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify({ password: auth.password }),
+      });
+    }
 
     async function load() {
-      const headers = { Authorization: `Bearer ${auth.token}` };
-      const tl = await fetch(`/api/timeline?password=${encodeURIComponent(auth.password)}`, { headers }).then(r => r.json());
-      const tr = await fetch(`/api/trends?password=${encodeURIComponent(auth.password)}`, { headers }).then(r => r.json());
       const tel = document.getElementById('timeline');
-      tel.innerHTML = '';
-      for (const item of tl.timeline || []) {
-        const card = document.createElement('div');
-        card.className = 'explanation-card';
-        card.innerHTML = `<p class="card-label">${item.document_type}</p><p class="plain"><strong>${item.title}</strong><br>${item.date}<br>${item.summary || ''}</p>`;
-        tel.appendChild(card);
-      }
-      if (!tl.timeline?.length) tel.innerHTML = '<p class="subtitle-muted">No saved documents yet. Save an explanation from the results page.</p>';
       const trel = document.getElementById('trends');
-      trel.innerHTML = '';
-      for (const t of tr.trends || []) {
-        const card = document.createElement('div');
-        card.className = 'flag-card informational';
-        card.innerHTML = `<h3>${t.loinc_code}</h3><p>Values: ${t.values.join(' → ')} (${t.change_pct}% change)</p>`;
-        trel.appendChild(card);
+      try {
+        const [tl, tr] = await Promise.all([post('/api/timeline'), post('/api/trends')]);
+
+        tel.innerHTML = '';
+        for (const item of tl.timeline || []) {
+          const card = document.createElement('article');
+          card.className = 'explanation-card';
+          const flags = item.flag_count ? ` · ${item.flag_count} flag${item.flag_count > 1 ? 's' : ''}` : '';
+          card.innerHTML = `
+            <div class="timeline-meta">
+              <p class="card-label">${escapeHtml(TYPE_LABELS[item.document_type] || item.document_type)}${flags}</p>
+              <time datetime="${escapeHtml(item.date)}">${escapeHtml(formatDate(item.date))}</time>
+            </div>
+            <p class="plain"><strong>${escapeHtml(item.title || 'Untitled document')}</strong></p>
+            ${item.summary ? `<p class="plain" style="color:var(--color-slate)">${escapeHtml(item.summary)}…</p>` : ''}`;
+          tel.appendChild(card);
+        }
+        if (!tl.timeline?.length) {
+          tel.innerHTML = '<div class="empty">No saved documents yet.<br>Open an explanation and tap <strong>Save explanation</strong>.<br><a class="btn-secondary" href="/upload">Upload a document</a></div>';
+        }
+
+        trel.innerHTML = '';
+        for (const t of tr.trends || []) {
+          const up = t.change_pct > 0 ? '▲' : t.change_pct < 0 ? '▼' : '—';
+          const card = document.createElement('article');
+          card.className = 'flag-card informational';
+          card.innerHTML = `<h3>${escapeHtml(t.loinc_code)}</h3><p>${t.values.map((v) => escapeHtml(v)).join(' → ')} &nbsp;${up} ${escapeHtml(Math.abs(t.change_pct))}%</p>`;
+          trel.appendChild(card);
+        }
+        if (!tr.trends?.length) trel.innerHTML = '<p class="subtitle-muted">Trends appear once you save two or more lab results.</p>';
+      } catch (e) {
+        if (e.status === 401) {
+          sessionStorage.removeItem('klarify_auth');
+          toast(e.message, 'error');
+          setTimeout(() => location.replace('/account?next=/timeline'), 1200);
+          return;
+        }
+        tel.innerHTML = `<div class="empty is-error">${escapeHtml(e.message)}<br><button type="button" class="btn-secondary" onclick="location.reload()">Try again</button></div>`;
+        trel.innerHTML = '';
       }
-      if (!tr.trends?.length) trel.innerHTML = '<p class="subtitle-muted">Trends appear when you have two or more lab results saved.</p>';
     }
-    load();
+    if (auth?.token) load();
   </script>
 </body>
 </html>

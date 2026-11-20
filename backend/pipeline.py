@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 
 from .document_humanizer import build_cards_for_document, humanize_document
@@ -57,14 +58,30 @@ def process_document(
     session_id = _audit_session(doc_type, lang)
     lang_name = SUPPORTED_LANGUAGES.get(lang, lang)
 
-    # L1 — Humanize base + RAG enrichment
+    # L1 — Humanize base, then RAG explanation + translation.
+    # Both may call the LLM, so run them in parallel; offline mode never calls it.
     humanized = humanize_document(parsed, doc_type)
-    rag = generate_explanation(parsed, doc_type, lang, lang_name)
+    offline = (mode or "").lower() == "offline"
+    if offline:
+        rag = None
+        humanized = translate_humanized(humanized, lang, parsed=parsed, mode=mode)
+    else:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            rag_future = pool.submit(generate_explanation, parsed, doc_type, lang, lang_name)
+            tr_future = pool.submit(translate_humanized, dict(humanized), lang, parsed=parsed, mode=mode)
+            translated = tr_future.result()
+            try:
+                rag = rag_future.result()
+            except Exception:
+                log.exception("RAG explanation failed")
+                rag = None
+        humanized = translated
+
+    # The document-specific RAG summary (already in the target language) wins;
+    # translation paths may otherwise drop the summary entirely.
     if rag and rag.get("patient_summary"):
         humanized["patient_summary"] = rag["patient_summary"]
         humanized["rag_provider"] = rag.get("rag_provider")
-
-    humanized = translate_humanized(humanized, lang, parsed=parsed, mode=mode)
     humanized = validate_humanized(humanized)
 
     # L2 — Clinical flagging

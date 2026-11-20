@@ -22,6 +22,13 @@ DISCLAIMER = (
     "Always follow your doctor or pharmacist for personal decisions."
 )
 
+# Cheap keyword check used when the LLM is unavailable or fails.
+OFF_TOPIC_KEYWORDS = (
+    "weather", "wetter", "forecast", "football", "soccer", "politic", "election", "bitcoin", "crypto",
+    "stock", "recipe", "movie", "song", "lyrics", "homework", "python", "javascript", "code ",
+    "joke", "horoscope",
+)
+
 REFUSAL_PATTERNS = (
     "does not contain",
     "only provide information directly related",
@@ -147,6 +154,32 @@ def _educational_reply(message: str, parsed: dict[str, Any], humanized: dict[str
     return None
 
 
+def _looks_off_topic(message: str) -> bool:
+    q = f" {_normalize(message)} "
+    return any(k in q for k in OFF_TOPIC_KEYWORDS)
+
+
+def _fallback_reply(message: str, parsed: dict[str, Any], humanized: dict[str, Any], lang: str, available: bool) -> dict[str, Any]:
+    """Answer without the LLM: built-in explainers, off-topic guard, or a friendly retry note."""
+    edu = _educational_reply(message, parsed, humanized, lang)
+    if edu:
+        return {"reply": f"{edu}\n\n⚕ {DISCLAIMER}", "on_topic": True, "available": available}
+    if _looks_off_topic(message):
+        return {"reply": OFF_TOPIC_REPLY, "on_topic": False, "available": available}
+    if not available:
+        return {
+            "reply": "The AI assistant is not configured right now. Try asking about co-payment, "
+            "the pharmacy, appointments or your medication.",
+            "on_topic": True,
+            "available": False,
+        }
+    return {
+        "reply": "Sorry, I couldn't generate a response. Please try again.",
+        "on_topic": True,
+        "available": True,
+    }
+
+
 def chat_about_prescription(
     message: str,
     parsed: dict[str, Any],
@@ -154,19 +187,12 @@ def chat_about_prescription(
     history: list[dict[str, str]] | None = None,
     lang: str = "en",
 ) -> dict[str, Any]:
-    if not is_available():
-        edu = _educational_reply(message, parsed, humanized, lang)
-        if edu:
-            return {"reply": f"{edu}\n\n⚕ {DISCLAIMER}", "on_topic": True, "available": False}
-        return {
-            "reply": "Chat is unavailable — Gemini API key not configured.",
-            "on_topic": False,
-            "available": False,
-        }
-
-    message = (message or "").strip()
+    message = (message or "").strip()[:2000]
     if not message:
-        return {"reply": "Please type a question.", "on_topic": True, "available": True}
+        return {"reply": "Please type a question.", "on_topic": True, "available": is_available()}
+
+    if not is_available():
+        return _fallback_reply(message, parsed, humanized, lang, available=False)
 
     context = _build_context_block(parsed, humanized)
     hist = _format_history(history or [])
@@ -206,14 +232,7 @@ Return ONLY valid JSON:
 
     raw = _generate_text(prompt, json_mode=True)
     if not raw:
-        edu = _educational_reply(message, parsed, humanized, lang)
-        if edu:
-            return {"reply": f"{edu}\n\n⚕ {DISCLAIMER}", "on_topic": True, "available": True}
-        return {
-            "reply": "Sorry, I couldn't generate a response. Please try again.",
-            "on_topic": True,
-            "available": True,
-        }
+        return _fallback_reply(message, parsed, humanized, lang, available=True)
 
     try:
         cleaned = raw.strip()
@@ -251,13 +270,9 @@ Return ONLY valid JSON:
             len(message),
         )
         return {"reply": reply, "on_topic": on_topic, "available": True}
-    except (json.JSONDecodeError, KeyError):
+    except (json.JSONDecodeError, KeyError, AttributeError):
         log.exception("Failed to parse Gemini chat response")
-        edu = _educational_reply(message, parsed, humanized, lang)
-        if edu:
-            return {"reply": f"{edu}\n\n⚕ {DISCLAIMER}", "on_topic": True, "available": True}
-        return {
-            "reply": raw[:2000] if raw else "Sorry, something went wrong.",
-            "on_topic": True,
-            "available": True,
-        }
+        fallback = _fallback_reply(message, parsed, humanized, lang, available=True)
+        if fallback["reply"].startswith("Sorry") and raw:
+            fallback["reply"] = raw[:2000]
+        return fallback

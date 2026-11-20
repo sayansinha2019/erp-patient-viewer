@@ -10,7 +10,7 @@ const KLARIFY_I18N = {
     trustStrip: 'Ihre Daten werden sofort gelöscht. Nichts wird gespeichert.',
     createAccount: 'Konto erstellen → Ihre Geschichte speichern',
     uploadTitle: 'Ihr Dokument hochladen',
-    uploadSubtitle: 'Upload your document',
+    uploadSubtitle: '',
     uploadTap: 'Tippen, um eine Datei auszuwählen',
     uploadTypes: 'FHIR XML oder JSON · Bis zu 20 MB',
     consent: 'Ich verstehe, dass mein Dokument erklärt und dann sofort gelöscht wird.',
@@ -70,7 +70,7 @@ const KLARIFY_I18N = {
     trustStrip: 'Verileriniz hemen silinir. Hiçbir şey saklanmaz.',
     createAccount: 'Hesap oluştur → Geçmişinizi kaydedin',
     uploadTitle: 'Belgenizi yükleyin',
-    uploadSubtitle: 'Upload your document',
+    uploadSubtitle: '',
     uploadTap: 'Dosya seçmek için dokunun',
     uploadTypes: 'FHIR XML veya JSON',
     consent: 'Belgemin açıklanacağını ve hemen silineceğini anlıyorum.',
@@ -100,7 +100,7 @@ const KLARIFY_I18N = {
     trustStrip: 'يتم حذف بياناتك فوراً. لا يتم تخزين شيء.',
     createAccount: 'إنشاء حساب → حفظ سجلك',
     uploadTitle: 'رفع مستندك',
-    uploadSubtitle: 'Upload your document',
+    uploadSubtitle: '',
     uploadTap: 'اضغط لاختيار ملف',
     uploadTypes: 'FHIR XML أو JSON',
     consent: 'أفهم أن مستندي سيُشرح ثم يُحذف فوراً.',
@@ -130,7 +130,7 @@ const KLARIFY_I18N = {
     trustStrip: 'Ваши данные удаляются сразу. Ничего не сохраняется.',
     createAccount: 'Создать аккаунт → Сохранить историю',
     uploadTitle: 'Загрузите документ',
-    uploadSubtitle: 'Upload your document',
+    uploadSubtitle: '',
     uploadTap: 'Нажмите, чтобы выбрать файл',
     uploadTypes: 'FHIR XML или JSON',
     consent: 'Я понимаю, что документ будет объяснён и сразу удалён.',
@@ -160,7 +160,7 @@ const KLARIFY_I18N = {
     trustStrip: 'Vos données sont supprimées immédiatement. Rien n\'est stocké.',
     createAccount: 'Créer un compte → Enregistrer votre historique',
     uploadTitle: 'Téléchargez votre document',
-    uploadSubtitle: 'Upload your document',
+    uploadSubtitle: '',
     uploadTap: 'Appuyez pour choisir un fichier',
     uploadTypes: 'FHIR XML ou JSON',
     consent: 'Je comprends que mon document sera expliqué puis supprimé immédiatement.',
@@ -188,7 +188,10 @@ function klarifyLang() {
 
 function t(key) {
   const lang = klarifyLang();
-  return (KLARIFY_I18N[lang] || KLARIFY_I18N.en)[key] || KLARIFY_I18N.en[key] || key;
+  const table = KLARIFY_I18N[lang] || KLARIFY_I18N.en;
+  if (typeof table[key] === 'string') return table[key];
+  if (typeof KLARIFY_I18N.en[key] === 'string') return KLARIFY_I18N.en[key];
+  return key;
 }
 
 function applyRtl() {

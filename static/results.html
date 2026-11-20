@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify</title>
-  <link rel="stylesheet" href="/static/shared.css?v=20260710" />
+  <link rel="stylesheet" href="/static/shared.css?v=20261120b" />
 </head>
 <body>
   <div id="processingView" class="processing-wrap screen screen-narrow" hidden>
     <div class="processing-icon" aria-hidden="true">📄→📝</div>
     <p id="processingText" style="font-size:1.125rem;color:var(--color-slate);">Reading your document…</p>
     <p id="processingTime" style="color:var(--color-muted);">This usually takes about 10 seconds.</p>
-    <div class="progress-dots" aria-hidden="true">●●●○○○</div>
+    <div class="progress-bar" role="progressbar" aria-label="Processing"><span></span></div>
     <p id="notStored" style="font-size:0.875rem;color:var(--color-muted);">Your data is not stored.</p>
   </div>
 
@@ -64,8 +64,9 @@
     <p class="disclaimer" id="disclaimer">Informational only — not medical advice.</p>
   </div>
 
-  <script src="/static/i18n.js"></script>
-  <script src="/static/results.js"></script>
+  <script src="/static/i18n.js?v=20261120b"></script>
+  <script src="/static/ui.js?v=20261120b"></script>
+  <script src="/static/results.js?v=20261120b"></script>
   <script>
     if (!sessionStorage.getItem('klarify_lang')) location.href = '/';
     applyRtl();
@@ -92,6 +93,16 @@
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const chatSendBtn = document.getElementById('chatSendBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const TITLES = {
+      prescription: t('prescriptionExplained'),
+      lab_result: 'Your lab results explained',
+      discharge: 'Your discharge letter explained',
+      referral: 'Your referral explained',
+      doctor_letter: "Your doctor's letter explained",
+      pdf: 'Your document explained',
+    };
+    const CHAT_TITLES = { prescription: t('chatTitle') };
 
     let prescriptionData = null;
     let chatHistory = [];
@@ -110,6 +121,17 @@
       div.textContent = text;
       chatMessages.appendChild(div);
       chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    function showTyping() {
+      const div = document.createElement('div');
+      div.className = 'chat-msg bot typing';
+      div.setAttribute('aria-label', 'Assistant is typing');
+      div.innerHTML = '<i></i><i></i><i></i>';
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
     }
 
     async function sendChatMessage(text) {
@@ -119,9 +141,9 @@
       appendChatMessage(message, 'user');
       chatBusy = true;
       chatSendBtn.disabled = true;
-      appendChatMessage('…', 'system');
+      const typing = showTyping();
       try {
-        const res = await fetch('/api/chat', {
+        const data = await apiFetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -132,20 +154,17 @@
             lang,
           }),
         });
-        const data = await res.json();
-        chatMessages.removeChild(chatMessages.lastChild);
-        if (!res.ok) throw new Error(data.detail || 'Chat failed');
+        typing.remove();
         chatHistory.push({ role: 'user', content: message });
         chatHistory.push({ role: 'assistant', content: data.reply });
         appendChatMessage(data.reply, 'bot', !data.on_topic);
       } catch (err) {
-        if (chatMessages.lastChild?.classList.contains('system')) {
-          chatMessages.removeChild(chatMessages.lastChild);
-        }
+        typing.remove();
         appendChatMessage(err.message, 'bot', true);
       } finally {
         chatBusy = false;
         chatSendBtn.disabled = false;
+        chatInput.focus();
       }
     }
 
@@ -200,44 +219,70 @@
         }
 
         prescriptionData = data;
+        const docType = data.document_type || data.parsed?.document_type || 'prescription';
+        const title = TITLES[docType] || TITLES.pdf;
+        document.getElementById('docTitle').textContent = title;
+        document.title = `Klarify — ${title}`;
+        document.getElementById('chatTitle').textContent = CHAT_TITLES[docType] || 'Ask about this document';
         const med = data.parsed?.medication_name || '';
-        if (med) {
-          document.getElementById('docSubtitle').textContent = med;
-        }
+        const sub = med || (data.document_title && data.document_title !== title ? data.document_title : '');
+        if (sub) document.getElementById('docSubtitle').textContent = sub;
 
         renderKlarifyResults(resultsEl, data);
         chatPanel.hidden = false;
         showResults();
       } catch (err) {
         showResults();
-        resultsEl.innerHTML = `<div class="empty">${err.message}</div>`;
+        saveBtn.hidden = true;
+        document.getElementById('feedbackRow').hidden = true;
+        resultsEl.innerHTML = `<div class="empty is-error">${escapeHtml(err.message)}<br>
+          <a class="btn-secondary" href="/home">Back to start</a></div>`;
       }
     }
 
     document.getElementById('feedbackRow').addEventListener('click', (e) => {
       if (e.target.closest('button')) {
         document.getElementById('feedbackRow').hidden = true;
+        toast('Thanks for your feedback!', 'success', 2500);
       }
     });
-    document.getElementById('saveBtn').addEventListener('click', async () => {
+    saveBtn.addEventListener('click', async () => {
+      if (!prescriptionData) return;
       const auth = JSON.parse(sessionStorage.getItem('klarify_auth') || 'null');
-      if (!auth?.token) { window.location.href = '/account'; return; }
-      const res = await fetch('/api/storage/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
-        body: JSON.stringify({ password: auth.password, record: prescriptionData }),
-      });
-      if (res.ok) alert('Saved to your health timeline.');
-      else alert('Could not save — check you are logged in.');
+      if (!auth?.token) {
+        // Keep the result so the user comes back to it after logging in
+        sessionStorage.setItem('klarify_result', JSON.stringify(prescriptionData));
+        const back = `/results?type=cached&lang=${encodeURIComponent(lang)}`;
+        window.location.href = `/account?next=${encodeURIComponent(back)}`;
+        return;
+      }
+      setBusy(saveBtn, true);
+      try {
+        await apiFetch('/api/storage/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+          body: JSON.stringify({ password: auth.password, record: prescriptionData }),
+        });
+        setBusy(saveBtn, false);
+        saveBtn.disabled = true;
+        saveBtn.textContent = '✓ Saved to your timeline';
+        toast('Saved to your health timeline.', 'success');
+      } catch (e) {
+        setBusy(saveBtn, false);
+        if (e.status === 401) sessionStorage.removeItem('klarify_auth');
+        toast(e.status === 401 ? 'Please log in again to save.' : e.message, 'error');
+      }
     });
     chatSendBtn.addEventListener('click', () => sendChatMessage());
-    chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChatMessage(); }
+    });
     document.getElementById('chatSuggestions').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-q]');
       if (btn) sendChatMessage(btn.dataset.q);
     });
 
-    setTimeout(loadData, 800);
+    loadData();
   </script>
 </body>
 </html>
