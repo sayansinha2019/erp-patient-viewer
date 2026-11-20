@@ -1,12 +1,12 @@
 {
-  "4548-4": {"name": "HbA1c", "component": "Hemoglobin A1c", "unit": "%", "system": "Blood"},
-  "33914-3": {"name": "eGFR", "component": "Glomerular filtration rate", "unit": "mL/min/1.73m2", "system": "Blood"},
-  "2160-0": {"name": "Creatinine", "component": "Creatinine", "unit": "mg/dL", "system": "Blood"},
-  "2093-3": {"name": "Total cholesterol", "component": "Cholesterol", "unit": "mg/dL", "system": "Blood"},
-  "2085-9": {"name": "HDL cholesterol", "component": "HDL", "unit": "mg/dL", "system": "Blood"},
-  "2571-8": {"name": "Triglycerides", "component": "Triglycerides", "unit": "mg/dL", "system": "Blood"},
-  "718-7": {"name": "Hemoglobin", "component": "Hemoglobin", "unit": "g/dL", "system": "Blood"},
-  "6690-2": {"name": "WBC", "component": "White blood cells", "unit": "10*3/uL", "system": "Blood"},
-  "2823-3": {"name": "Potassium", "component": "Potassium", "unit": "mmol/L", "system": "Blood"},
-  "2951-2": {"name": "Sodium", "component": "Sodium", "unit": "mmol/L", "system": "Blood"}
+  "4548-4": {"name": "HbA1c", "component": "Hemoglobin A1c", "unit": "%", "system": "Blood", "search_terms_de": "HbA1c, Langzeitblutzucker, Langzeitzuckerwert, glykiertes Hämoglobin, Blutzucker-Langzeitwert"},
+  "33914-3": {"name": "eGFR", "component": "Glomerular filtration rate", "unit": "mL/min/1.73m2", "system": "Blood", "search_terms_de": "eGFR, glomeruläre Filtrationsrate, Nierenfunktion, Nierenwert, Filtrationsleistung der Niere"},
+  "2160-0": {"name": "Creatinine", "component": "Creatinine", "unit": "mg/dL", "system": "Blood", "search_terms_de": "Kreatinin, Creatinin, Nierenwert, Kreatinin im Serum"},
+  "2093-3": {"name": "Total cholesterol", "component": "Cholesterol", "unit": "mg/dL", "system": "Blood", "search_terms_de": "Gesamtcholesterin, Cholesterin, Blutfette"},
+  "2085-9": {"name": "HDL cholesterol", "component": "HDL", "unit": "mg/dL", "system": "Blood", "search_terms_de": "HDL-Cholesterin, gutes Cholesterin"},
+  "2571-8": {"name": "Triglycerides", "component": "Triglycerides", "unit": "mg/dL", "system": "Blood", "search_terms_de": "Triglyceride, Triglyzeride, Neutralfette, Blutfette"},
+  "718-7": {"name": "Hemoglobin", "component": "Hemoglobin", "unit": "g/dL", "system": "Blood", "search_terms_de": "Hämoglobin, Hb, roter Blutfarbstoff, Blutarmut"},
+  "6690-2": {"name": "WBC", "component": "White blood cells", "unit": "10*3/uL", "system": "Blood", "search_terms_de": "Leukozyten, weiße Blutkörperchen, Entzündungswert"},
+  "2823-3": {"name": "Potassium", "component": "Potassium", "unit": "mmol/L", "system": "Blood", "search_terms_de": "Kalium, Kaliumwert, Elektrolyt"},
+  "2951-2": {"name": "Sodium", "component": "Sodium", "unit": "mmol/L", "system": "Blood", "search_terms_de": "Natrium, Natriumwert, Elektrolyt, Salzhaushalt"}
 }

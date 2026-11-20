@@ -3,8 +3,11 @@
 ChromaDB is always the vector store. Where the embeddings come from is set by
 KLARIFY_EMBEDDINGS:
 
-- "local"  (default, PRODUCTION): Chroma's bundled ONNX model runs inside the app.
-           Clinical text never leaves our server. Needs ~300 MB+ RAM.
+- "local"  (default, PRODUCTION): a multilingual ONNX sentence-embedding model
+           (paraphrase-multilingual-MiniLM-L12-v2) runs inside the app via onnxruntime.
+           Clinical text never leaves our server. The model is baked into the Docker
+           image at build time (never downloaded at runtime in production).
+           Needs ~1 GB RAM for the whole app (model + index ~250 MB of that).
 - "vertex" (DEMO ONLY — NOT FOR PRODUCTION): embeddings are computed by Google
            Vertex AI (third party). Query text — which can contain medication
            names / diagnoses from a patient's document — is sent to Google.
@@ -13,6 +16,7 @@ KLARIFY_EMBEDDINGS:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -40,7 +44,13 @@ _MAX_DISTANCE_BY_MODEL = {
     "gemini-embedding-2": 0.375,              # correct <= 0.37, irrelevant >= 0.39
     "text-multilingual-embedding-002": 0.50,  # correct <= 0.47, irrelevant >= 0.56
 }
-_LOCAL_MAX_DISTANCE = 0.55
+# Local model (paraphrase-multilingual-MiniLM-L12-v2 quint8, one vector per term), via Chroma:
+# correct <= 0.34 ("Metformin 1000 mg Filmtabletten"), irrelevant >= 0.43 ("Ramipril", not in
+# the dictionary; "Prospan Hustensaft" 0.44, "random football weather" 0.67).
+_LOCAL_MAX_DISTANCE = 0.38
+# Extra local-mode hits must also be close to the best one: related entries sit within 0.11
+# (Bluthochdruck -> Enalapril), noise >= 0.24 behind (Sodbrennen -> Potassium, Kreatinin -> lens implant).
+_LOCAL_MAX_GAP = 0.2
 
 
 def _max_distance() -> float:
@@ -60,6 +70,14 @@ _EMBED_LOCATIONS = list(dict.fromkeys(
 ))
 _EMBED_CHOICE: tuple[str, str] | None = None  # (model, location) used to build the index
 _EMBED_CLIENTS: dict[str, Any] = {}
+
+# PRODUCTION local model: multilingual (50+ languages incl. German/English), runs in-process
+# with onnxruntime (no torch, no network at query time). The quint8 AVX2 export is ~120 MB
+# on disk / ~250 MB RAM and ranks the calibration queries like the fp32 model.
+LOCAL_EMBED_MODEL = os.getenv("KLARIFY_LOCAL_EMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+LOCAL_EMBED_FILE = os.getenv("KLARIFY_LOCAL_EMBED_FILE", "onnx/model_quint8_avx2.onnx")
+_LOCAL_TOKENIZER_FILE = "tokenizer.json"
+_LOCAL_EMBED_FN: Any = None
 
 
 def _load_json(name: str) -> dict | list:
@@ -122,6 +140,20 @@ def _entry_document(entry: dict[str, Any]) -> str:
     label = _SYSTEM_LABEL.get(entry.get("system", ""), "")
     fields = [str(entry[f]) for f in _TEXT_FIELDS if entry.get(f)]
     return f"{label} {entry.get('code', '')}: " + "; ".join(fields)
+
+
+def _entry_search_texts(entry: dict[str, Any]) -> list[str]:
+    """Local mode: every text that should find this entry, each embedded as its own vector.
+
+    The full document plus each name and each German term from "search_terms_de"
+    (e.g. Kreatinin, L-Thyroxin, Bluthochdruck). A small model averages one long document
+    into mush, so a one-word query like "Kreatinin" only matches reliably against a short
+    text; the entry's score is its best-matching text.
+    """
+    texts = [_entry_document(entry)]
+    texts += [str(entry[f]) for f in ("name", "en", "de", "component") if entry.get(f)]
+    texts += [t.strip() for t in str(entry.get("search_terms_de", "")).split(",") if t.strip()]
+    return list(dict.fromkeys(texts))
 
 
 def format_entry(entry: dict[str, Any]) -> str:
@@ -213,13 +245,105 @@ def _vertex_query_embedding(text: str) -> tuple[float, ...]:
     return tuple(_vertex_embed([text], "RETRIEVAL_QUERY")[0])
 
 
+# ---------------------------------------------------------------- local (production) embeddings
+
+def local_model_dir() -> Path:
+    """Where the local ONNX model lives. Docker bakes it into /app/models at build time."""
+    if os.getenv("KLARIFY_LOCAL_MODEL_DIR"):
+        return Path(os.environ["KLARIFY_LOCAL_MODEL_DIR"])
+    cache = Path(os.getenv("KLARIFY_CACHE_DIR") or (Path(__file__).resolve().parents[2] / ".cache"))
+    return cache / "models" / LOCAL_EMBED_MODEL.replace("/", "__")
+
+
+def download_local_model(dest: Path | None = None) -> Path:
+    """Fetch the ONNX model + tokenizer from Hugging Face into `dest` (Docker build step)."""
+    from huggingface_hub import hf_hub_download
+
+    dest = dest or local_model_dir()
+    for filename in (LOCAL_EMBED_FILE, _LOCAL_TOKENIZER_FILE):
+        hf_hub_download(LOCAL_EMBED_MODEL, filename, local_dir=str(dest))
+    return dest
+
+
+def _local_model_files() -> tuple[Path, Path]:
+    model_dir = local_model_dir()
+    model, tokenizer = model_dir / LOCAL_EMBED_FILE, model_dir / _LOCAL_TOKENIZER_FILE
+    if not (model.exists() and tokenizer.exists()):
+        # The Docker image ships the model and sets KLARIFY_MODEL_DOWNLOAD=0, so production
+        # never reaches the network here; dev machines download once into .cache/models.
+        if os.getenv("KLARIFY_MODEL_DOWNLOAD", "1").lower() in ("0", "false", "no"):
+            raise RuntimeError(f"Local embedding model missing at {model_dir} (runtime download disabled)")
+        log.info("Downloading local embedding model %s to %s", LOCAL_EMBED_MODEL, model_dir)
+        download_local_model(model_dir)
+    return model, tokenizer
+
+
+def _make_local_embedding_function():
+    """Chroma embedding function backed by the multilingual ONNX model (in-process)."""
+    import numpy as np
+    import onnxruntime as ort
+    from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
+    from tokenizers import Tokenizer
+
+    class KlarifyMultilingualEmbedding(EmbeddingFunction[Documents]):
+        def __init__(self, model_path: str, tokenizer_path: str) -> None:
+            self.model_path, self.tokenizer_path = model_path, tokenizer_path
+            self._tokenizer = Tokenizer.from_file(tokenizer_path)
+            self._tokenizer.enable_truncation(max_length=256)
+            self._tokenizer.enable_padding()
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = int(os.getenv("KLARIFY_EMBED_THREADS", "2"))
+            self._session = ort.InferenceSession(model_path, sess_options=opts, providers=["CPUExecutionProvider"])
+            self._inputs = {i.name for i in self._session.get_inputs()}
+
+        def __call__(self, input: Documents) -> Embeddings:
+            vectors = []
+            for i in range(0, len(input), 32):
+                encoded = self._tokenizer.encode_batch(list(input[i:i + 32]))
+                ids = np.array([e.ids for e in encoded], dtype=np.int64)
+                mask = np.array([e.attention_mask for e in encoded], dtype=np.int64)
+                feed = {"input_ids": ids, "attention_mask": mask}
+                if "token_type_ids" in self._inputs:
+                    feed["token_type_ids"] = np.zeros_like(ids)
+                tokens = self._session.run(None, feed)[0]
+                weights = mask[..., None].astype(np.float32)
+                pooled = (tokens * weights).sum(axis=1) / np.clip(weights.sum(axis=1), 1e-9, None)  # mean pooling
+                pooled /= np.clip(np.linalg.norm(pooled, axis=1, keepdims=True), 1e-12, None)
+                vectors.extend(v.astype(np.float32) for v in pooled)
+            return vectors
+
+        @staticmethod
+        def name() -> str:
+            return "klarify_multilingual_onnx"
+
+        def default_space(self) -> str:
+            return "cosine"
+
+        def get_config(self) -> dict[str, Any]:
+            return {"model_path": self.model_path, "tokenizer_path": self.tokenizer_path}
+
+        @staticmethod
+        def build_from_config(config: dict[str, Any]) -> "KlarifyMultilingualEmbedding":
+            return KlarifyMultilingualEmbedding(config["model_path"], config["tokenizer_path"])
+
+    model, tokenizer = _local_model_files()
+    return KlarifyMultilingualEmbedding(str(model), str(tokenizer))
+
+
+def _local_embedding_function():
+    global _LOCAL_EMBED_FN
+    if _LOCAL_EMBED_FN is None:
+        _LOCAL_EMBED_FN = _make_local_embedding_function()
+    return _LOCAL_EMBED_FN
+
+
 # ---------------------------------------------------------------- Chroma index
 
 def _collection_name() -> str:
     if embeddings_mode() == "vertex":
         model = (_EMBED_CHOICE or (_EMBED_MODELS[0], ""))[0]
         return f"klarify_clinical_vertex_{model.replace('.', '-')}_{VERTEX_EMBED_DIMS}"
-    return "klarify_clinical_local"
+    return "klarify_clinical_local_" + LOCAL_EMBED_MODEL.split("/")[-1].lower()[:40]
 
 
 def _get_chroma_index():
@@ -246,14 +370,31 @@ def _get_chroma_index():
             kwargs: dict[str, Any] = {"metadata": {"hnsw:space": "cosine"}}
             if mode == "vertex":
                 kwargs["embedding_function"] = None  # we pass vectors ourselves; no local model is loaded
-            collection = client.get_or_create_collection(_collection_name(), **kwargs)
-
-            if collection.count() != len(lookup):  # first run or dictionaries changed
-                client.delete_collection(_collection_name())
-                collection = client.get_or_create_collection(_collection_name(), **kwargs)
                 ids = list(lookup)
                 documents = [_entry_document(lookup[k]) for k in ids]
                 metadatas = [{"system": lookup[k]["system"], "code": lookup[k]["code"]} for k in ids]
+                stale = lambda c: c.count() != len(lookup)  # noqa: E731
+            else:
+                # Several vectors per entry (id "<entry>#<n>", metadata "key" = entry)
+                kwargs["embedding_function"] = _local_embedding_function()
+                ids, documents, metadatas = [], [], []
+                for key, entry in lookup.items():
+                    for n, text in enumerate(_entry_search_texts(entry)):
+                        ids.append(f"{key}#{n}")
+                        documents.append(text)
+                        metadatas.append({"key": key, "system": entry["system"], "code": entry["code"]})
+                docs_hash = hashlib.sha256(
+                    "\n".join([LOCAL_EMBED_MODEL, LOCAL_EMBED_FILE, *documents]).encode("utf-8")
+                ).hexdigest()[:16]
+                kwargs["metadata"]["docs_hash"] = docs_hash
+                stale = lambda c: (  # noqa: E731
+                    c.count() != len(ids) or (c.metadata or {}).get("docs_hash") != docs_hash
+                )
+            collection = client.get_or_create_collection(_collection_name(), **kwargs)
+
+            if stale(collection):  # first run or dictionaries/model changed
+                client.delete_collection(_collection_name())
+                collection = client.get_or_create_collection(_collection_name(), **kwargs)
                 if ids:
                     if mode == "vertex":
                         vectors = _vertex_embed(documents, "RETRIEVAL_DOCUMENT")
@@ -283,7 +424,7 @@ def index_status() -> dict[str, Any]:
     model, location = _EMBED_CHOICE or (None, None)
     return {
         "ready": _INDEX is not None,
-        "embed_model": model if embeddings_mode() == "vertex" else "chroma-default-onnx",
+        "embed_model": model if embeddings_mode() == "vertex" else LOCAL_EMBED_MODEL,
         "embed_location": location,
         "last_error": "build failed, retrying" if _INDEX_FAILED_AT is not None else None,
     }
@@ -313,18 +454,33 @@ def semantic_search(query: str, n: int = 3) -> list[str]:
     index = _get_chroma_index()
     if index is not None:
         try:
-            if embeddings_mode() == "vertex":
-                results = index.query(query_embeddings=[list(_vertex_query_embedding(query))], n_results=n)
-            else:
-                results = index.query(query_texts=[query], n_results=n)
             lookup = _build_lookup()
             max_distance = _max_distance()
-            ids = results.get("ids", [[]])[0]
-            dists = (results.get("distances") or [[None] * len(ids)])[0]
-            return [
-                format_entry(lookup[i]) for i, d in zip(ids, dists)
-                if i in lookup and (d is None or d <= max_distance)
-            ]
+            if embeddings_mode() == "vertex":
+                results = index.query(query_embeddings=[list(_vertex_query_embedding(query))], n_results=n)
+                ids = results.get("ids", [[]])[0]
+                dists = (results.get("distances") or [[None] * len(ids)])[0]
+                return [
+                    format_entry(lookup[i]) for i, d in zip(ids, dists)
+                    if i in lookup and (d is None or d <= max_distance)
+                ]
+            # local: several vectors per entry, results come sorted by distance — keep each entry's best
+            results = index.query(query_texts=[query], n_results=min(n * 10, index.count()))
+            metas = (results.get("metadatas") or [[]])[0]
+            dists = (results.get("distances") or [[]])[0]
+            keys: list[str] = []
+            for meta, d in zip(metas, dists):
+                key = (meta or {}).get("key")
+                if key in lookup and key not in keys and d <= max_distance and d - dists[0] <= _LOCAL_MAX_GAP:
+                    keys.append(key)
+            return [format_entry(lookup[k]) for k in keys[:n]]
         except Exception:
             log.exception("Chroma query failed — using keyword lookup")
     return _keyword_fallback(query, n)
+
+
+if __name__ == "__main__":  # Docker build: python -m backend.dictionaries.clinical_index --download-model
+    import sys
+
+    if "--download-model" in sys.argv:
+        print("Local embedding model saved to", download_local_model())

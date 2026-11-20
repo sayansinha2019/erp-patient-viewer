@@ -1,12 +1,12 @@
 {
-  "A10BA02": {"name": "Metformin", "class": "Antidiabetic", "route": "oral"},
-  "H03AA01": {"name": "Levothyroxine", "class": "Thyroid hormone", "route": "oral"},
-  "C09AA02": {"name": "Enalapril", "class": "ACE inhibitor", "route": "oral"},
-  "C07AB02": {"name": "Metoprolol", "class": "Beta blocker", "route": "oral"},
-  "N02BE01": {"name": "Paracetamol", "class": "Analgesic", "route": "oral"},
-  "N03AX16": {"name": "Gabapentin", "class": "Antiepileptic", "route": "oral"},
-  "B01AC06": {"name": "Acetylsalicylic acid", "class": "Antiplatelet", "route": "oral"},
-  "C10AA01": {"name": "Simvastatin", "class": "Statin", "route": "oral"},
-  "A02BC01": {"name": "Omeprazole", "class": "Proton pump inhibitor", "route": "oral"},
-  "R03AC02": {"name": "Salbutamol", "class": "Bronchodilator", "route": "inhalation"}
+  "A10BA02": {"name": "Metformin", "class": "Antidiabetic", "route": "oral", "search_terms_de": "Metformin, Metformin Tabletten, Blutzuckersenker, Diabetesmedikament, Antidiabetikum"},
+  "H03AA01": {"name": "Levothyroxine", "class": "Thyroid hormone", "route": "oral", "search_terms_de": "Levothyroxin, L-Thyroxin, Euthyrox, Schilddrüsenhormon, Schilddrüsentabletten, Schilddrüsenunterfunktion"},
+  "C09AA02": {"name": "Enalapril", "class": "ACE inhibitor", "route": "oral", "search_terms_de": "Enalapril, ACE-Hemmer, Blutdrucksenker, Blutdruckmittel"},
+  "C07AB02": {"name": "Metoprolol", "class": "Beta blocker", "route": "oral", "search_terms_de": "Metoprolol, Betablocker, Blutdrucksenker, Herzfrequenz senken"},
+  "N02BE01": {"name": "Paracetamol", "class": "Analgesic", "route": "oral", "search_terms_de": "Paracetamol, Schmerzmittel, Fiebersenker, Schmerztabletten, gegen Fieber und Schmerzen"},
+  "N03AX16": {"name": "Gabapentin", "class": "Antiepileptic", "route": "oral", "search_terms_de": "Gabapentin, Nervenschmerzen, Neuropathie, Antiepileptikum, gegen Krampfanfälle"},
+  "B01AC06": {"name": "Acetylsalicylic acid", "class": "Antiplatelet", "route": "oral", "search_terms_de": "Acetylsalicylsäure, ASS, Aspirin, Blutverdünner, Thrombozytenaggregationshemmer"},
+  "C10AA01": {"name": "Simvastatin", "class": "Statin", "route": "oral", "search_terms_de": "Simvastatin, Statin, Cholesterinsenker, Blutfettsenker"},
+  "A02BC01": {"name": "Omeprazole", "class": "Proton pump inhibitor", "route": "oral", "search_terms_de": "Omeprazol, Magenschutz, Säureblocker, Protonenpumpenhemmer, gegen Sodbrennen"},
+  "R03AC02": {"name": "Salbutamol", "class": "Bronchodilator", "route": "inhalation", "search_terms_de": "Salbutamol, Asthmaspray, Notfallspray, Inhalator, Bronchien erweitern"}
 }

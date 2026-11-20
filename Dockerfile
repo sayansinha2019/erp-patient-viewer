@@ -8,6 +8,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl \
 COPY requirements-prod.txt .
 RUN pip install --no-cache-dir -r requirements-prod.txt
 
+# Production clinical search (KLARIFY_EMBEDDINGS=local): bake the multilingual ONNX
+# embedding model into the image so the app never downloads anything at runtime.
+# (~120 MB on disk; unused and not loaded in the vertex demo mode.)
+ARG LOCAL_EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+ARG LOCAL_EMBED_FILE=onnx/model_quint8_avx2.onnx
+ENV KLARIFY_LOCAL_EMBED_MODEL=${LOCAL_EMBED_MODEL} \
+    KLARIFY_LOCAL_EMBED_FILE=${LOCAL_EMBED_FILE} \
+    KLARIFY_LOCAL_MODEL_DIR=/app/models/local-embed
+RUN python -c "import os; from huggingface_hub import hf_hub_download as get; \
+[get(os.environ['KLARIFY_LOCAL_EMBED_MODEL'], f, local_dir=os.environ['KLARIFY_LOCAL_MODEL_DIR']) \
+ for f in (os.environ['KLARIFY_LOCAL_EMBED_FILE'], 'tokenizer.json')]" \
+    && rm -rf /app/models/local-embed/.cache
+ENV KLARIFY_MODEL_DOWNLOAD=0 \
+    HF_HUB_OFFLINE=1
+
 COPY backend/ ./backend/
 COPY static/ ./static/
 COPY data/ ./data/
