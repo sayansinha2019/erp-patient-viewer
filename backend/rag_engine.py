@@ -72,11 +72,15 @@ def _build_context(parsed: dict[str, Any], doc_type: str) -> str:
         meta = resolve_atc(atc) if atc else None
         if meta:
             parts.append(f"ATC {atc}: {meta.get('name')}")
-    if parsed.get("medication_name"):
-        parts.extend(semantic_search(parsed["medication_name"], n=2))
-    if not parts and parsed.get("document_title"):
-        parts.extend(semantic_search(parsed["document_title"], n=2))
-    return "\n".join(str(p) for p in parts[:12]) or "(no additional context)"
+    queries = [parsed.get("medication_name"), parsed.get("document_title"), parsed.get("clinical_narrative")]
+    for med in parsed.get("medications", []) or []:
+        if not med.get("atc_code"):
+            queries.append(med.get("name"))
+    for q in queries:
+        if q:
+            parts.extend(semantic_search(str(q)[:300], n=2))
+    deduped = list(dict.fromkeys(str(p) for p in parts))
+    return "\n".join(deduped[:12]) or "(no additional context)"
 
 
 def generate_explanation(

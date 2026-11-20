@@ -1,0 +1,34 @@
+# Render Blueprint — DEMO deployment (not production). One-click deploy: https://render.com/deploy?repo=<this repo URL>
+services:
+  - type: web
+    name: klarify
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # ⚠ DEMO ONLY — NOT FOR PRODUCTION ⚠
+      # ChromaDB stays the vector store, but embeddings are computed by Google
+      # Vertex AI (third party) instead of a model inside the app, so the demo
+      # fits Render's free 512 MB. Query text (medication names, diagnoses)
+      # leaves the app. Production: KLARIFY_EMBEDDINGS=local (data stays in-house).
+      - key: KLARIFY_EMBEDDINGS
+        value: vertex
+      - key: KLARIFY_DEPLOYMENT
+        value: demo
+      - key: TRANSLATION_MODE
+        value: auto
+      - key: ERP_MODE
+        value: mock
+      - key: EPA_MODE
+        value: mock
+      - key: GEMINI_MODEL
+        value: gemini-3-flash-preview
+      - key: GCP_PROJECT_ID
+        value: nemoya-494113
+      - key: GCP_LOCATION
+        value: global
+      # Paste the service-account JSON (one line) in the Render dashboard
+      - key: GCP_SERVICE_ACCOUNT_KEY
+        sync: false

@@ -54,6 +54,13 @@ epa = EpaClient()
 log = get_logger("api")
 
 
+@app.on_event("startup")
+def _warm_clinical_index() -> None:
+    from .dictionaries.clinical_index import warm_index
+
+    warm_index()
+
+
 def _page(name: str) -> FileResponse:
     """HTML pages always revalidate so a new deploy is picked up immediately."""
     return FileResponse(STATIC_DIR / name, headers={"Cache-Control": "no-cache"})
@@ -78,6 +85,19 @@ def health():
         "samples_count": len(list(SAMPLES_DIR.glob("*.xml"))) if SAMPLES_DIR.exists() else 0,
         "epa_mode": epa.mode,
         "zero_retention": zero_retention_enabled(),
+        "clinical_search": _clinical_search_status(),
+    }
+
+
+def _clinical_search_status() -> dict:
+    from .dictionaries import clinical_index as ci
+
+    mode = ci.embeddings_mode()
+    return {
+        "vector_store": "chromadb",
+        "embeddings": mode,
+        "ready": ci._INDEX is not None,
+        "demo_only": mode == "vertex",
     }
 
 
