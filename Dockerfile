@@ -21,7 +21,11 @@ RUN git clone --depth 1 https://github.com/gematik/api-erp.git /tmp/api-erp \
 ENV ERP_SAMPLES_DIR=/app/data/samples
 ENV KLARIFY_DATA_DIR=/app/.data
 ENV KLARIFY_CACHE_DIR=/app/.cache
+ENV HOME=/app/.cache/home
 ENV PORT=8000
+
+# Writable dirs for non-root runtimes (Hugging Face Spaces runs as uid 1000)
+RUN mkdir -p /app/.data /app/.cache/home /app/logs     && chmod -R 777 /app/.data /app/.cache /app/logs
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
