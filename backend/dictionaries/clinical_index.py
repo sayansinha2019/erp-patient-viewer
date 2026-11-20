@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -27,14 +28,38 @@ log = get_logger("clinical_index")
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "clinical"
 _INDEX: Any = None
 _INDEX_LOCK = threading.Lock()
-_INDEX_FAILED = False
+_INDEX_FAILED_AT: float | None = None
+_RETRY_AFTER_S = 60
 _LOOKUP: dict[str, dict[str, Any]] = {}
 
 # Cosine distance above this = not relevant enough to put into the prompt.
-# Tuned on German/English test queries: correct hits were <= 0.32 (vertex) / <= 0.50 (local).
-_DEFAULT_MAX_DISTANCE = {"vertex": 0.35, "local": 0.55}
-VERTEX_EMBED_MODEL = os.getenv("KLARIFY_EMBED_MODEL", "gemini-embedding-001")
+# Calibrated per model on German/English test queries (gap between the worst correct
+# hit and the best off-topic / not-in-dictionary query).
+_MAX_DISTANCE_BY_MODEL = {
+    "gemini-embedding-001": 0.35,             # correct <= 0.31, irrelevant >= 0.39
+    "gemini-embedding-2": 0.375,              # correct <= 0.37, irrelevant >= 0.39
+    "text-multilingual-embedding-002": 0.50,  # correct <= 0.47, irrelevant >= 0.56
+}
+_LOCAL_MAX_DISTANCE = 0.55
+
+
+def _max_distance() -> float:
+    if os.getenv("KLARIFY_SEARCH_MAX_DISTANCE"):
+        return float(os.environ["KLARIFY_SEARCH_MAX_DISTANCE"])
+    if embeddings_mode() == "vertex":
+        return _MAX_DISTANCE_BY_MODEL.get((_EMBED_CHOICE or ("",))[0], 0.4)
+    return _LOCAL_MAX_DISTANCE
 VERTEX_EMBED_DIMS = int(os.getenv("KLARIFY_EMBED_DIMS", "768"))
+# Model availability differs per Google region (requests from some hosts get routed
+# elsewhere), so try a chain of models and locations; the first working pair is pinned.
+_EMBED_MODELS = list(dict.fromkeys(
+    [os.getenv("KLARIFY_EMBED_MODEL", "gemini-embedding-001"), "gemini-embedding-2", "text-multilingual-embedding-002"]
+))
+_EMBED_LOCATIONS = list(dict.fromkeys(
+    [os.getenv("GCP_LOCATION", "global"), "global", "us-central1", "europe-west4"]
+))
+_EMBED_CHOICE: tuple[str, str] | None = None  # (model, location) used to build the index
+_EMBED_CLIENTS: dict[str, Any] = {}
 
 
 def _load_json(name: str) -> dict | list:
@@ -117,24 +142,70 @@ def embeddings_mode() -> str:
     return mode if mode in ("local", "vertex") else "local"
 
 
-def _vertex_embed(texts: list[str], task_type: str) -> list[list[float]]:
-    """DEMO ONLY: embeddings from Google Vertex AI (text leaves the app)."""
+def _embed_client(location: str):
+    """Vertex client for a given location, reusing the app's credentials."""
+    if location not in _EMBED_CLIENTS:
+        from google import genai
+
+        from ..gemini_client import _get_client, _service_account_info
+
+        base = _get_client()
+        if base is None:
+            raise RuntimeError("Vertex AI / Gemini client is not configured")
+        info = _service_account_info()
+        project = os.getenv("GCP_PROJECT_ID") or (info or {}).get("project_id")
+        creds = None
+        if info:
+            from google.oauth2 import service_account
+
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+        _EMBED_CLIENTS[location] = genai.Client(vertexai=True, project=project, location=location, credentials=creds)
+    return _EMBED_CLIENTS[location]
+
+
+def _embed_with(model: str, location: str, texts: list[str], task_type: str) -> list[list[float]]:
     from google.genai import types
 
-    from ..gemini_client import _get_client
-
-    client = _get_client()
-    if client is None:
-        raise RuntimeError("Vertex AI / Gemini client is not configured")
+    client = _embed_client(location)
+    config = types.EmbedContentConfig(task_type=task_type, output_dimensionality=VERTEX_EMBED_DIMS)
     out: list[list[float]] = []
     for i in range(0, len(texts), 100):  # API batch limit
-        resp = client.models.embed_content(
-            model=VERTEX_EMBED_MODEL,
-            contents=texts[i:i + 100],
-            config=types.EmbedContentConfig(task_type=task_type, output_dimensionality=VERTEX_EMBED_DIMS),
-        )
-        out.extend(list(e.values) for e in resp.embeddings)
+        batch = texts[i:i + 100]
+        resp = client.models.embed_content(model=model, contents=batch, config=config)
+        if len(resp.embeddings) == len(batch):
+            out.extend(list(e.values) for e in resp.embeddings)
+        else:
+            # Some models (e.g. gemini-embedding-2) merge a list into ONE vector — embed individually
+            for text in batch:
+                one = client.models.embed_content(model=model, contents=text, config=config)
+                out.append(list(one.embeddings[0].values))
+    if len(out) != len(texts):
+        raise RuntimeError(f"{model} returned {len(out)} vectors for {len(texts)} texts")
     return out
+
+
+def _vertex_embed(texts: list[str], task_type: str) -> list[list[float]]:
+    """DEMO ONLY: embeddings from Google Vertex AI (text leaves the app).
+
+    The first call picks a working (model, location) pair; later calls reuse it so
+    index and query vectors always come from the same model.
+    """
+    global _EMBED_CHOICE
+    if _EMBED_CHOICE:
+        return _embed_with(*_EMBED_CHOICE, texts, task_type)
+    errors = []
+    for model in _EMBED_MODELS:
+        for location in _EMBED_LOCATIONS:
+            try:
+                vectors = _embed_with(model, location, texts, task_type)
+                _EMBED_CHOICE = (model, location)
+                log.info("Vertex embeddings: using %s @ %s", model, location)
+                return vectors
+            except Exception as exc:  # 404 = not served in that region, try next
+                errors.append(f"{model}@{location}: {str(exc)[:80]}")
+    raise RuntimeError("No Vertex embedding model available: " + " | ".join(errors))
 
 
 @lru_cache(maxsize=512)
@@ -146,19 +217,20 @@ def _vertex_query_embedding(text: str) -> tuple[float, ...]:
 
 def _collection_name() -> str:
     if embeddings_mode() == "vertex":
-        return f"klarify_clinical_vertex_{VERTEX_EMBED_MODEL.replace('.', '-')}_{VERTEX_EMBED_DIMS}"
+        model = (_EMBED_CHOICE or (_EMBED_MODELS[0], ""))[0]
+        return f"klarify_clinical_vertex_{model.replace('.', '-')}_{VERTEX_EMBED_DIMS}"
     return "klarify_clinical_local"
 
 
 def _get_chroma_index():
     """Build (once) and return the Chroma collection, or None if unavailable."""
-    global _INDEX, _INDEX_FAILED
-    if _INDEX is not None or _INDEX_FAILED:
+    global _INDEX, _INDEX_FAILED_AT
+    if _INDEX is not None or _recently_failed():
         return _INDEX
     if os.getenv("KLARIFY_DISABLE_CHROMA", "").lower() in ("1", "true"):
         return None
     with _INDEX_LOCK:
-        if _INDEX is not None or _INDEX_FAILED:
+        if _INDEX is not None or _recently_failed():
             return _INDEX
         try:
             import chromadb
@@ -169,6 +241,8 @@ def _get_chroma_index():
             client = chromadb.PersistentClient(path=str(persist), settings=Settings(anonymized_telemetry=False))
             mode = embeddings_mode()
             lookup = _build_lookup()
+            if mode == "vertex":
+                _vertex_embed(["warm-up"], "RETRIEVAL_DOCUMENT")  # pins a working model before naming the collection
             kwargs: dict[str, Any] = {"metadata": {"hnsw:space": "cosine"}}
             if mode == "vertex":
                 kwargs["embedding_function"] = None  # we pass vectors ourselves; no local model is loaded
@@ -189,15 +263,30 @@ def _get_chroma_index():
 
             if mode == "vertex":
                 log.warning(
-                    "DEMO MODE: clinical search embeddings via Google Vertex AI (%s). "
-                    "Query text leaves the app — not for production.", VERTEX_EMBED_MODEL,
+                    "DEMO MODE: clinical search embeddings via Google Vertex AI (%s @ %s). "
+                    "Query text leaves the app — not for production.", *(_EMBED_CHOICE or ("?", "?")),
                 )
             log.info("Chroma clinical index ready (%d entries, embeddings=%s)", collection.count(), mode)
             _INDEX = collection
+            _INDEX_FAILED_AT = None
         except Exception:
-            log.exception("Chroma clinical index unavailable — using keyword lookup")
-            _INDEX_FAILED = True
+            log.exception("Chroma clinical index unavailable — keyword lookup for now, retrying in %ss", _RETRY_AFTER_S)
+            _INDEX_FAILED_AT = time.monotonic()
     return _INDEX
+
+
+def _recently_failed() -> bool:
+    return _INDEX_FAILED_AT is not None and time.monotonic() - _INDEX_FAILED_AT < _RETRY_AFTER_S
+
+
+def index_status() -> dict[str, Any]:
+    model, location = _EMBED_CHOICE or (None, None)
+    return {
+        "ready": _INDEX is not None,
+        "embed_model": model if embeddings_mode() == "vertex" else "chroma-default-onnx",
+        "embed_location": location,
+        "last_error": "build failed, retrying" if _INDEX_FAILED_AT is not None else None,
+    }
 
 
 def warm_index() -> None:
@@ -229,7 +318,7 @@ def semantic_search(query: str, n: int = 3) -> list[str]:
             else:
                 results = index.query(query_texts=[query], n_results=n)
             lookup = _build_lookup()
-            max_distance = float(os.getenv("KLARIFY_SEARCH_MAX_DISTANCE") or _DEFAULT_MAX_DISTANCE[embeddings_mode()])
+            max_distance = _max_distance()
             ids = results.get("ids", [[]])[0]
             dists = (results.get("distances") or [[None] * len(ids)])[0]
             return [

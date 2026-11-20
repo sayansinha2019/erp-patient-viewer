@@ -93,12 +93,7 @@ def _clinical_search_status() -> dict:
     from .dictionaries import clinical_index as ci
 
     mode = ci.embeddings_mode()
-    return {
-        "vector_store": "chromadb",
-        "embeddings": mode,
-        "ready": ci._INDEX is not None,
-        "demo_only": mode == "vertex",
-    }
+    return {"vector_store": "chromadb", "embeddings": mode, "demo_only": mode == "vertex", **ci.index_status()}
 
 
 @app.get("/")
