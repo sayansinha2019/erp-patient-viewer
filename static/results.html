@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Klarify</title>
-  <link rel="stylesheet" href="/static/shared.css?v=20261120b" />
+  <link rel="stylesheet" href="/static/shared.css?v=20261120c" />
 </head>
 <body>
   <div id="processingView" class="processing-wrap screen screen-narrow" hidden>
@@ -64,9 +64,9 @@
     <p class="disclaimer" id="disclaimer">Informational only — not medical advice.</p>
   </div>
 
-  <script src="/static/i18n.js?v=20261120b"></script>
-  <script src="/static/ui.js?v=20261120b"></script>
-  <script src="/static/results.js?v=20261120b"></script>
+  <script src="/static/i18n.js?v=20261120c"></script>
+  <script src="/static/ui.js?v=20261120c"></script>
+  <script src="/static/results.js?v=20261120c"></script>
   <script>
     if (!sessionStorage.getItem('klarify_lang')) location.href = '/';
     applyRtl();
@@ -82,6 +82,7 @@
     document.getElementById('docTitle').textContent = t('prescriptionExplained');
     document.getElementById('helpfulText').textContent = t('helpful');
     document.getElementById('chatTitle').textContent = t('chatTitle');
+    document.getElementById('chatSub').textContent = t('chatSub');
     document.getElementById('chatInput').placeholder = t('chatPlaceholder');
     document.getElementById('chatSendBtn').textContent = t('send');
     document.getElementById('disclaimer').textContent = t('disclaimer');
@@ -96,11 +97,11 @@
     const saveBtn = document.getElementById('saveBtn');
     const TITLES = {
       prescription: t('prescriptionExplained'),
-      lab_result: 'Your lab results explained',
-      discharge: 'Your discharge letter explained',
-      referral: 'Your referral explained',
-      doctor_letter: "Your doctor's letter explained",
-      pdf: 'Your document explained',
+      lab_result: t('title_lab_result'),
+      discharge: t('title_discharge'),
+      referral: t('title_referral'),
+      doctor_letter: t('title_doctor_letter'),
+      pdf: t('title_pdf'),
     };
     const CHAT_TITLES = { prescription: t('chatTitle') };
 
@@ -223,7 +224,7 @@
         const title = TITLES[docType] || TITLES.pdf;
         document.getElementById('docTitle').textContent = title;
         document.title = `Klarify — ${title}`;
-        document.getElementById('chatTitle').textContent = CHAT_TITLES[docType] || 'Ask about this document';
+        document.getElementById('chatTitle').textContent = CHAT_TITLES[docType] || t('chatTitleGeneric');
         const med = data.parsed?.medication_name || '';
         const sub = med || (data.document_title && data.document_title !== title ? data.document_title : '');
         if (sub) document.getElementById('docSubtitle').textContent = sub;

@@ -17,6 +17,19 @@ OFF_TOPIC_REPLY = (
     "I can't answer unrelated topics like weather or other people's medical records."
 )
 
+DISCLAIMERS = {
+    "de": "Dies sind allgemeine Informationen — keine ärztliche Beratung. Folgen Sie bei persönlichen Entscheidungen immer Ihrem Arzt oder Apotheker.",
+    "tr": "Bu genel bilgidir — tıbbi tavsiye değildir. Kişisel kararlar için her zaman doktorunuza veya eczacınıza danışın.",
+    "ar": "هذه معلومات عامة وليست نصيحة طبية. اتبع دائمًا تعليمات طبيبك أو الصيدلي في القرارات الشخصية.",
+    "ru": "Это общая информация, а не медицинская консультация. В личных решениях всегда следуйте указаниям врача или фармацевта.",
+    "fr": "Ceci est une information générale — pas un avis médical. Suivez toujours votre médecin ou pharmacien pour vos décisions personnelles.",
+}
+
+
+def _disclaimer(lang: str) -> str:
+    return DISCLAIMERS.get((lang or "en")[:2].lower(), DISCLAIMER)
+
+
 DISCLAIMER = (
     "This is general information — not medical advice. "
     "Always follow your doctor or pharmacist for personal decisions."
@@ -163,7 +176,7 @@ def _fallback_reply(message: str, parsed: dict[str, Any], humanized: dict[str, A
     """Answer without the LLM: built-in explainers, off-topic guard, or a friendly retry note."""
     edu = _educational_reply(message, parsed, humanized, lang)
     if edu:
-        return {"reply": f"{edu}\n\n⚕ {DISCLAIMER}", "on_topic": True, "available": available}
+        return {"reply": f"{edu}\n\n⚕ {_disclaimer(lang)}", "on_topic": True, "available": available}
     if _looks_off_topic(message):
         return {"reply": OFF_TOPIC_REPLY, "on_topic": False, "available": available}
     if not available:
@@ -261,7 +274,7 @@ Return ONLY valid JSON:
                 on_topic = True
 
         if on_topic and reply:
-            reply = f"{reply}\n\n⚕ {DISCLAIMER}"
+            reply = f"{reply}\n\n⚕ {_disclaimer(target_lang)}"
 
         log.info(
             "chat doc_type=%s on_topic=%s q_len=%d",
